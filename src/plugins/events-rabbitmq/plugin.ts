@@ -42,8 +42,10 @@ export class Events implements IEvents {
     return new Promise(async (resolve, reject) => {
       try {
         features.log.info(`Ready my events name`);
-        self.earExchange.myResponseName = `${OS.hostname()}-${features.cwd}`.replace(/[\W-]/g, '').toLowerCase();// + (features.config.debug ? `-${Math.random()}`: '');
-        features.log.info(`Ready my events name - ${self.earExchange.myResponseName}`);
+        self.earExchange.myResponseName = `${features.cwd}`.replace(/[\W-]/g, '').toLowerCase() +
+          ((features.getPluginConfig().noRandomDebugName === true ? '' : features.config.debug ? `-${Math.random()}` : '')) +
+          (features.getPluginConfig().uniqueId|| '');
+        features.log.info(`Ready my events name - ${OS.hostname()}-${self.earExchange.myResponseName}`);
 
         features.log.info(`Ready internal events`);
         self.builtInEvents = new (EVENT_EMITTER as any)();
@@ -74,18 +76,18 @@ export class Events implements IEvents {
         });
         features.log.info(`Open EAR channel (${self.earExchange.name}) - PREFETCH`);
         self.rabbitQConnectionEARChannel.prefetch(1);
-        features.log.info(`Open EAR channel (${self.earExchange.name}) - ${self.features.pluginName}-${self.earExchange.myResponseName} - LISTEN`);
-        let eventEARQueue = self.rabbitQConnectionEmitChannel.assertQueue(`${self.features.pluginName}-${self.earExchange.myResponseName}`, {
+        features.log.info(`Open EAR channel (${self.earExchange.name}) - ${OS.hostname()}-${self.earExchange.myResponseName} - LISTEN`);
+        let eventEARQueue = self.rabbitQConnectionEmitChannel.assertQueue(`${OS.hostname()}-${self.earExchange.myResponseName}`, {
           durable: true
         });
         eventEARQueue = eventEARQueue.then(function () {
-          self.features.log.info(` - LISTEN: [${self.features.pluginName}-${self.earExchange.myResponseName}] - LISTENING`);
+          self.features.log.info(` - LISTEN: [${OS.hostname()}-${self.earExchange.myResponseName}] - LISTENING`);
         });
         eventEARQueue = eventEARQueue.then(function () {
-          self.rabbitQConnectionEmitChannel.consume(`${self.features.pluginName}-${self.earExchange.myResponseName}`, (msg: any) => {
+          self.rabbitQConnectionEmitChannel.consume(`${OS.hostname()}-${self.earExchange.myResponseName}`, (msg: any) => {
             let body = msg.content.toString();
             self.rabbitQConnectionEmitChannel.ack(msg);
-            self.features.log.debug(`[RECEVIED ${self.earExchange.myResponseName}]:`, body);
+            self.features.log.debug(`[RECEVIED ${OS.hostname()}-${self.earExchange.myResponseName}]:`, body);
             const bodyObj = JSON.parse(body) as internalEvent<any>;
             self.builtInEvents.emit(bodyObj.id, bodyObj);
           }, { noAck: false });
@@ -221,7 +223,7 @@ export class Events implements IEvents {
       self._emitEvent(plugin, pluginName, event, self.rabbitQConnectionEARChannel, {
         id: resultKey,
         data: data,
-        plugin: plugin,
+        plugin: OS.hostname(),
         topic: self.earExchange.myResponseName
       } as transEAREvent<T1>, args);
 

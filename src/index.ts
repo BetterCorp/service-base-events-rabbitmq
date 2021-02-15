@@ -36,8 +36,8 @@ plugin.init({
   });
   //as
   //plugin.emitEventAndReturn('core', 'hello', 'world2', 'THIS IS A ....TEST: ' + new Date().getTime()).then(console.warn);
-  //plugin.emitEvent('core', 'hello', 'world', 'THIS IS A ....TEST: ' + new Date().getTime());
-  return
+  plugin.emitEvent('core', 'hello', 'world', { key: 'THIS IS A ....TEST: ' + new Date().getTime() });
+  return;
   //while(true) await new Promise((resolve)=>{plugin.emitEvent('core', 'hello', 'world', 'THIS IS A ....TEST: ' + new Date().getTime());setTimeout(resolve, 10);});
   setTimeout(async () => {
     console.log('-------------CLEAR');
