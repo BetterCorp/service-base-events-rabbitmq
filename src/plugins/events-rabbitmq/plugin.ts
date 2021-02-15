@@ -194,16 +194,7 @@ export class Events implements IEvents {
         "$$TIME": new Date().getTime()
       };
 
-      let timeoutTimer: any = setTimeout(() => {
-        if (timeoutTimer === null)
-          return;
-        clearTimeout(timeoutTimer);
-        timeoutTimer = null;
-        self.features.log.debug(plugin, ` - EMIT AR: [${`${pluginName || plugin}-${event}`}-${resultKey}]`, 'TIMED OUT');
-        reject(`NO RESPONSE IN TIME: ${pluginName || plugin}/${resultKey} x${((data || {}) as any).timeoutSeconds || 10}s`);
-      }, timeoutSeconds * 1000);
-
-      self.builtInEvents.once(resultKey, (data: internalEvent<T2>) => {
+      const listener = (data: internalEvent<T2>) => {
         if (timeoutTimer === null)
           return this.logger.debug(plugin, ` - REC EAR TOO LATE: [${`${pluginName || plugin}-${event}`}]`, data.resultSuccess ? 'SUCCESS' : 'ERRORED', data);
         this.logger.debug(plugin, ` - REC EAR: [${`${pluginName || plugin}-${event}`}]`, data.resultSuccess ? 'SUCCESS' : 'ERRORED', data);
@@ -213,7 +204,19 @@ export class Events implements IEvents {
           resolve(data.data);
         else
           reject(data.data);
-      });
+      };
+
+      let timeoutTimer: any = setTimeout(() => {
+        if (timeoutTimer === null)
+          return;
+        clearTimeout(timeoutTimer);
+        timeoutTimer = null;
+        self.builtInEvents.removeListener(resultKey, listener);
+        self.features.log.debug(plugin, ` - EMIT AR: [${`${pluginName || plugin}-${event}`}-${resultKey}]`, 'TIMED OUT');
+        reject(`NO RESPONSE IN TIME: ${pluginName || plugin}/${resultKey} x${((data || {}) as any).timeoutSeconds || 10}s`);
+      }, timeoutSeconds * 1000);
+
+      self.builtInEvents.once(resultKey, listener);
 
       self._emitEvent(plugin, pluginName, event, self.rabbitQConnectionEARChannel, {
         id: resultKey,
