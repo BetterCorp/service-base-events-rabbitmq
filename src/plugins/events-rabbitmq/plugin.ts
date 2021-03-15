@@ -25,11 +25,11 @@ export class Events implements IEvents {
   private features!: PluginFeature;
   private logger!: IPluginLogger;
   private emitExchange: any = {
-    type: 'direct',
+    type: 'fanout',
     name: 'better-service-emit'
   };
   private earExchange: any = {
-    type: 'fanout',
+    type: 'direct',
     name: 'better-service-ear',
     myResponseName: null
   };
@@ -42,10 +42,10 @@ export class Events implements IEvents {
     return new Promise(async (resolve, reject) => {
       try {
         features.log.info(`Ready my events name`);
-        self.earExchange.myResponseName = `${features.cwd}`.replace(/[\W-]/g, '').toLowerCase() +
+        self.earExchange.myResponseName = `${OS.hostname()}-${features.cwd}`.replace(/[\W-]/g, '').toLowerCase() +
           ((features.getPluginConfig().noRandomDebugName === true ? '' : features.config.debug ? `-${Math.random()}` : '')) +
           (features.getPluginConfig().uniqueId|| '');
-        features.log.info(`Ready my events name - ${OS.hostname()}-${self.earExchange.myResponseName}`);
+        features.log.info(`Ready my events name - ${self.earExchange.myResponseName}`);
 
         features.log.info(`Ready internal events`);
         self.builtInEvents = new (EVENT_EMITTER as any)();
@@ -72,22 +72,22 @@ export class Events implements IEvents {
         features.log.info(`Open EAR channel (${self.earExchange.name})`);
         self.rabbitQConnectionEARChannel = await self.rabbitQConnection.createChannel();
         self.rabbitQConnectionEARChannel.assertExchange(self.earExchange.name, self.earExchange.type, {
-          durable: true
+          durable: false
         });
         features.log.info(`Open EAR channel (${self.earExchange.name}) - PREFETCH`);
         self.rabbitQConnectionEARChannel.prefetch(1);
-        features.log.info(`Open EAR channel (${self.earExchange.name}) - ${OS.hostname()}-${self.earExchange.myResponseName} - LISTEN`);
-        let eventEARQueue = self.rabbitQConnectionEmitChannel.assertQueue(`${OS.hostname()}-${self.earExchange.myResponseName}`, {
-          durable: true
+        features.log.info(`Open EAR channel (${self.earExchange.name}) - ${self.earExchange.myResponseName} - LISTEN`);
+        let eventEARQueue = self.rabbitQConnectionEmitChannel.assertQueue(`${self.earExchange.myResponseName}`, {
+          durable: false
         });
         eventEARQueue = eventEARQueue.then(function () {
-          self.features.log.info(` - LISTEN: [${OS.hostname()}-${self.earExchange.myResponseName}] - LISTENING`);
+          self.features.log.info(` - LISTEN: [${self.earExchange.myResponseName}] - LISTENING`);
         });
         eventEARQueue = eventEARQueue.then(function () {
-          self.rabbitQConnectionEmitChannel.consume(`${OS.hostname()}-${self.earExchange.myResponseName}`, (msg: any) => {
+          self.rabbitQConnectionEmitChannel.consume(`${self.earExchange.myResponseName}`, (msg: any) => {
             let body = msg.content.toString();
             self.rabbitQConnectionEmitChannel.ack(msg);
-            self.features.log.debug(`[RECEVIED ${OS.hostname()}-${self.earExchange.myResponseName}]:`, body);
+            self.features.log.debug(`[RECEVIED ${self.earExchange.myResponseName}]:`, body);
             const bodyObj = JSON.parse(body) as internalEvent<any>;
             self.builtInEvents.emit(bodyObj.id, bodyObj);
           }, { noAck: false });
@@ -151,7 +151,7 @@ export class Events implements IEvents {
     const self = this;
     self.features.log.info(plugin, ` - LISTEN EAR: [${`${pluginName || plugin}-${event}`}]`);
     let qArguments: any = {
-      durable: true
+      durable: false
     };
 
     let ok = self.rabbitQConnectionEARChannel.assertQueue(`${pluginName || plugin}-${event}`, qArguments);
@@ -189,7 +189,7 @@ export class Events implements IEvents {
       const resultKey = `${UUID()}-${new Date().getTime()}${Math.random()}`;
       const timeoutSeconds = ((data || {}) as any).timeoutSeconds || 10;
       const args = {
-        durable: true,
+        durable: false,
         //autoDelete: true,
         "x-expires": (timeoutSeconds * 1000) + 5000,
         "x-message-ttl": timeoutSeconds * 1000,
