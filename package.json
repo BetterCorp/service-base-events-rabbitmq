@@ -16,7 +16,7 @@
     "installer.js"
   ],
   "main": "lib/index.js",
-  "version": "1.0.7",
+  "version": "1.0.8",
   "dependencies": {
     "@bettercorp/service-base": "^4.0.0",
     "@bettercorp/tools": "^1.0.6",

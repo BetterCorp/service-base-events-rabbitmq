@@ -42,7 +42,7 @@ export class Events implements IEvents {
     return new Promise(async (resolve, reject) => {
       try {
         features.log.info(`Ready my events name`);
-        self.earExchange.myResponseName = `${OS.hostname()}-${features.cwd}`.replace(/[\W-]/g, '').toLowerCase() +
+        self.earExchange.myResponseName = `${features.cwd}`.replace(/[\W-]/g, '').toLowerCase() +
           ((features.getPluginConfig().noRandomDebugName === true ? '' : features.config.debug ? `-${Math.random()}` : '')) +
           (features.getPluginConfig().uniqueId|| '');
         features.log.info(`Ready my events name - ${self.earExchange.myResponseName}`);
@@ -63,7 +63,7 @@ export class Events implements IEvents {
         features.log.info(`Open emit channel (${self.emitExchange.name})`);
         self.rabbitQConnectionEmitChannel = await self.rabbitQConnection.createChannel();
         self.rabbitQConnectionEmitChannel.assertExchange(self.emitExchange.name, self.emitExchange.type, {
-          durable: true
+          durable: false
         });
         features.log.info(`Open emit channel (${self.emitExchange.name}) - PREFETCH`);
         self.rabbitQConnectionEmitChannel.prefetch(1);
@@ -77,14 +77,15 @@ export class Events implements IEvents {
         features.log.info(`Open EAR channel (${self.earExchange.name}) - PREFETCH`);
         self.rabbitQConnectionEARChannel.prefetch(1);
         features.log.info(`Open EAR channel (${self.earExchange.name}) - ${self.earExchange.myResponseName} - LISTEN`);
-        let eventEARQueue = self.rabbitQConnectionEmitChannel.assertQueue(`${self.earExchange.myResponseName}`, {
-          durable: false
+        let eventEARQueue = self.rabbitQConnectionEmitChannel.assertQueue(`${OS.hostname()}-${self.earExchange.myResponseName}`, {
+          durable: false,
+          auto_delete: true
         });
         eventEARQueue = eventEARQueue.then(function () {
           self.features.log.info(` - LISTEN: [${self.earExchange.myResponseName}] - LISTENING`);
         });
         eventEARQueue = eventEARQueue.then(function () {
-          self.rabbitQConnectionEmitChannel.consume(`${self.earExchange.myResponseName}`, (msg: any) => {
+          self.rabbitQConnectionEmitChannel.consume(`${OS.hostname()}-${self.earExchange.myResponseName}`, (msg: any) => {
             let body = msg.content.toString();
             self.rabbitQConnectionEmitChannel.ack(msg);
             self.features.log.debug(`[RECEVIED ${self.earExchange.myResponseName}]:`, body);
@@ -105,7 +106,8 @@ export class Events implements IEvents {
     const self = this;
     self.features.log.info(plugin, ` - LISTEN: [${`${pluginName || plugin}-${event}`}]`);
     let qArguments: any = {
-      durable: true
+      durable: false,
+      auto_delete: true
     };
 
     let ok = self.rabbitQConnectionEmitChannel.assertQueue(`${pluginName || plugin}-${event}`, qArguments);
@@ -126,7 +128,8 @@ export class Events implements IEvents {
     const self = this;
     self.features.log.debug(plugin, ` - EMIT: [${`${pluginName || plugin}-${event}`}]`, data);
     let qArguments: any = {
-      durable: true
+      durable: false,
+      auto_delete: true
     };
     if (!Tools.isNullOrUndefined(additionalArgs)) {
       for (let iKey of Object.keys(additionalArgs))
@@ -151,7 +154,8 @@ export class Events implements IEvents {
     const self = this;
     self.features.log.info(plugin, ` - LISTEN EAR: [${`${pluginName || plugin}-${event}`}]`);
     let qArguments: any = {
-      durable: false
+      durable: false,
+      auto_delete: true
     };
 
     let ok = self.rabbitQConnectionEARChannel.assertQueue(`${pluginName || plugin}-${event}`, qArguments);
@@ -190,7 +194,7 @@ export class Events implements IEvents {
       const timeoutSeconds = ((data || {}) as any).timeoutSeconds || 10;
       const args = {
         durable: false,
-        //autoDelete: true,
+        //auto_delete: true,
         "x-expires": (timeoutSeconds * 1000) + 5000,
         "x-message-ttl": timeoutSeconds * 1000,
         "$$TIME": new Date().getTime()
