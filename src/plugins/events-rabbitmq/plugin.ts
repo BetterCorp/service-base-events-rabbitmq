@@ -186,17 +186,17 @@ export class Events implements IEvents {
       }, { noAck: false });
     });
   }
-  emitEventAndReturn<T1 = any, T2 = void> (plugin: string, pluginName: string | null, event: string, data?: T1): Promise<T2> {
+  emitEventAndReturn<T1 = any, T2 = void> (plugin: string, pluginName: string | null, event: string, data?: T1, timeoutSeconds: number = 10): Promise<T2> {
     const self = this;
     this.logger.debug(plugin, ` - EMIT EAR: [${`${pluginName || plugin}-${event}`}]`, data);
     return new Promise((resolve, reject) => {
       const resultKey = `${UUID()}-${new Date().getTime()}${Math.random()}`;
-      const timeoutSeconds = ((data || {}) as any).timeoutSeconds || 10;
+      const xtimeoutSeconds = timeoutSeconds || 10;
       const args = {
         durable: false,
         //auto_delete: true,
-        "x-expires": (timeoutSeconds * 1000) + 5000,
-        "x-message-ttl": timeoutSeconds * 1000,
+        "x-expires": (xtimeoutSeconds * 1000) + 5000,
+        "x-message-ttl": xtimeoutSeconds * 1000,
         "$$TIME": new Date().getTime()
       };
 
@@ -231,22 +231,6 @@ export class Events implements IEvents {
         topic: self.earExchange.myResponseName
       } as transEAREvent<T1>, args);
 
-      // NB: `sentToQueue` and `publish` both return a boolean
-      // indicating whether it's OK to send again straight away, or
-      // (when `false`) that you should wait for the event `'drain'`
-      // to fire before writing again. We're just doing the one write,
-      // so we'll ignore it.
-      /*setTimeout(() => {
-        self.rabbitQConnectionEmitARChannel.sendToQueue(`${pluginName || plugin}-${event}`, Buffer.from(JSON.stringify({
-          resultKey: resultKey,
-          resultNames: {
-            plugin: pluginName || plugin,
-            success: `result`,
-            error: `error`
-          },
-          data: data
-        })));
-      }, 500);*/
       self.features.log.debug(plugin, ` - EMIT EAR: [${`${pluginName || plugin}-${event}`}-${resultKey}] - EMITTED`, data);
     });
   }
