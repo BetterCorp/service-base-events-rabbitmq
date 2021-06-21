@@ -39,7 +39,7 @@ export class Events implements IEvents {
   };
   private readonly emitExchangeQueue: any = {
     durable: true,
-    messageTtl: (60 * 60 * 360) * 1000 // 360 minutes
+    messageTtl: (60 * 60 * 60 * 6) * 1000 // 6h
     //expires: (60*60*360)*1000 // 360 minutes
   };
   private readonly earExchangeQueue: any = {
@@ -204,9 +204,9 @@ export class Events implements IEvents {
       const xtimeoutSeconds = timeoutSeconds || 10;
       const additionalArgs: any = {
         "$$TIME": new Date().getTime(),
-        expires: (xtimeoutSeconds * 1000) + 5000,
+        expiration: (xtimeoutSeconds * 1000) + 5000,
       };
-      if (additionalArgs.expires >= self.earExchangeQueue) return reject(`TTL CANNOT BE GREATER THAN: ${self.earExchangeQueue-2}ms`)
+      if (additionalArgs.expiration >= self.earExchangeQueue) return reject(`TTL CANNOT BE GREATER THAN: ${self.earExchangeQueue-2}ms`)
       let qArguments: any = JSON.parse(JSON.stringify(self.earExchangeQueue));
       for (let iKey of Object.keys(additionalArgs))
         qArguments[iKey] = additionalArgs[iKey];
