@@ -41,7 +41,7 @@ export class Events implements IEvents {
   };
   private readonly earExchangeQueue: any = {
     durable: false,
-    exclusive: true,
+    //exclusive: true,
     autoDelete: true,
     messageTtl: (60*60*10)*1000, // 15 minutes
     expires: (60*60*60)*1000 // 60 minutes

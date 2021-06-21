@@ -15,7 +15,7 @@
     "installer.js"
   ],
   "main": "lib/index.js",
-  "version": "1.0.9-test-acks",
+  "version": "1.0.9-test-acks2",
   "dependencies": {
     "@bettercorp/service-base": "^4.0.8",
     "@bettercorp/tools": "^1.0.8",
