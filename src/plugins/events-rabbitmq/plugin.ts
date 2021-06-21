@@ -21,9 +21,10 @@ interface transEAREvent<T> {
 export class Events implements IEvents {
   private rabbitQConnection: any;
   private rabbitQConnectionEmitChannel: any;
-  private readonly rabbitQConnectionEmitChannelKey = "eq-";
+  private readonly rabbitQConnectionEmitChannelKey = "eq";
   private rabbitQConnectionEARChannel: any;
-  private readonly rabbitQConnectionEARChannelKey = "ar-";
+  private readonly rabbitQConnectionEARChannelKey = "ar";
+  private readonly rabbitQConnectionEARChannelKeyMine = "kr";
   private builtInEvents: any;
   private features!: PluginFeature;
   private logger!: IPluginLogger;
@@ -45,7 +46,7 @@ export class Events implements IEvents {
     durable: false,
     //exclusive: true,
     autoDelete: true,
-    messageTtl: (60 * 60 * 10) * 1000, // 15 minutes
+    //messageTtl: (60 * 60 * 10) * 1000, // 15 minutes
     expires: (60 * 60 * 60) * 1000 // 60 minutes
   };
 
@@ -147,12 +148,12 @@ export class Events implements IEvents {
     features.log.info(`Open EAR channel (${ self.earExchange.name }) - PREFETCH x${ features.getPluginConfig<IPluginConfig>().prefetchEAR }`);
     self.rabbitQConnectionEARChannel.prefetch(features.getPluginConfig<IPluginConfig>().prefetchEAR);
     features.log.info(`Open EAR channel (${ self.earExchange.name }) - ${ self.earExchange.myResponseName } - LISTEN`);
-    let eventEARQueue = self.rabbitQConnectionEARChannel.assertQueue(`${self.rabbitQConnectionEARChannelKey}-${ OS.hostname() }-${ self.earExchange.myResponseName }`, self.earExchangeQueue);
+    let eventEARQueue = self.rabbitQConnectionEARChannel.assertQueue(`${self.rabbitQConnectionEARChannelKeyMine}-${ OS.hostname() }-${ self.earExchange.myResponseName }`, self.earExchangeQueue);
     eventEARQueue = eventEARQueue.then(function () {
       self.features.log.info(` - LISTEN: [${ self.earExchange.myResponseName }] - LISTENING`);
     });
     eventEARQueue = eventEARQueue.then(function () {
-      self.rabbitQConnectionEARChannel.consume(`${self.rabbitQConnectionEARChannelKey}-${ OS.hostname() }-${ self.earExchange.myResponseName }`, (msg: any) => {
+      self.rabbitQConnectionEARChannel.consume(`${self.rabbitQConnectionEARChannelKeyMine}-${ OS.hostname() }-${ self.earExchange.myResponseName }`, (msg: any) => {
         let body = msg.content.toString();
         self.rabbitQConnectionEARChannel.ack(msg);
         self.features.log.debug(`[RECEVIED ${ self.earExchange.myResponseName }]:`, body);
@@ -177,16 +178,16 @@ export class Events implements IEvents {
         const bodyObj = JSON.parse(body) as transEAREvent<T>;
         listener((x: any) => {
           self.rabbitQConnectionEARChannel.ack(msg);
-          self.logger.debug(plugin, ` - RETURN OKAY: [${ self.rabbitQConnectionEARChannelKey }-${ pluginName || plugin }-${ event }]`, bodyObj);
-          self._emitEvent(self.rabbitQConnectionEARChannelKey, self.earExchangeQueue, plugin, bodyObj.plugin, bodyObj.topic, self.rabbitQConnectionEARChannel, {
+          self.logger.debug(plugin, ` - RETURN OKAY: [${ self.rabbitQConnectionEARChannelKeyMine }-${ pluginName || plugin }-${ event }]`, bodyObj);
+          self._emitEvent(self.rabbitQConnectionEARChannelKeyMine, self.earExchangeQueue, plugin, bodyObj.plugin, bodyObj.topic, self.rabbitQConnectionEARChannel, {
             data: x,
             id: bodyObj.id,
             resultSuccess: true
           } as internalEvent<T>);
         }, (x: any) => {
           self.rabbitQConnectionEARChannel.ack(msg);
-          self.logger.debug(plugin, ` - RETURN ERROR: [${ self.rabbitQConnectionEARChannelKey }-${ pluginName || plugin }-${ event }]`, bodyObj);
-          self._emitEvent(self.rabbitQConnectionEARChannelKey, self.earExchangeQueue, plugin, bodyObj.plugin, bodyObj.topic, self.rabbitQConnectionEARChannel, {
+          self.logger.debug(plugin, ` - RETURN ERROR: [${ self.rabbitQConnectionEARChannelKeyMine }-${ pluginName || plugin }-${ event }]`, bodyObj);
+          self._emitEvent(self.rabbitQConnectionEARChannelKeyMine, self.earExchangeQueue, plugin, bodyObj.plugin, bodyObj.topic, self.rabbitQConnectionEARChannel, {
             data: x,
             id: bodyObj.id,
             resultSuccess: false
@@ -205,6 +206,7 @@ export class Events implements IEvents {
         "$$TIME": new Date().getTime(),
         messageTtl: (xtimeoutSeconds * 1000) + 5000,
       };
+      if (additionalArgs.messageTtl >= self.earExchangeQueue) return reject(`TTL CANNOT BE GREATER THAN: ${self.earExchangeQueue-2}ms`)
       let qArguments: any = JSON.parse(JSON.stringify(self.earExchangeQueue));
       for (let iKey of Object.keys(additionalArgs))
         qArguments[iKey] = additionalArgs[iKey];
