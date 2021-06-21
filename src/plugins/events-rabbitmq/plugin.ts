@@ -4,6 +4,7 @@ import { v4 as UUID } from 'uuid';
 import { Tools } from '@bettercorp/tools/lib/Tools';
 import * as EVENT_EMITTER from 'events';
 import * as OS from 'os';
+import { IPluginConfig } from './sec.config';
 
 interface internalEvent<T> {
   data: T;
@@ -24,14 +25,26 @@ export class Events implements IEvents {
   private builtInEvents: any;
   private features!: PluginFeature;
   private logger!: IPluginLogger;
-  private emitExchange: any = {
+  private readonly emitExchange: any = {
     type: 'fanout',
     name: 'better-service-emit'
   };
-  private earExchange: any = {
+  private readonly earExchange: any = {
     type: 'direct',
     name: 'better-service-ear',
     myResponseName: null
+  };
+  private readonly emitExchangeQueue: any = {
+    durable: true,
+    messageTtl: (60*60*360)*1000 // 360 minutes
+    //expires: (60*60*360)*1000 // 360 minutes
+  };
+  private readonly earExchangeQueue: any = {
+    durable: false,
+    exclusive: true,
+    autoDelete: true,
+    messageTtl: (60*60*10)*1000, // 15 minutes
+    expires: (60*60*60)*1000 // 60 minutes
   };
 
   init (features: PluginFeature): Promise<void> {
@@ -43,30 +56,30 @@ export class Events implements IEvents {
       try {
         features.log.info(`Ready my events name`);
         self.earExchange.myResponseName = `${features.cwd}`.replace(/[\W-]/g, '').toLowerCase() +
-          ((features.getPluginConfig().noRandomDebugName === true ? '' : features.config.debug ? `-${Math.random()}` : '')) +
-          (features.getPluginConfig().uniqueId|| '');
+          ((features.getPluginConfig<IPluginConfig>().noRandomDebugName === true ? '' : features.config.debug ? `-${Math.random()}` : '')) +
+          (features.getPluginConfig<IPluginConfig>().uniqueId|| '');
         features.log.info(`Ready my events name - ${self.earExchange.myResponseName}`);
 
         features.log.info(`Ready internal events`);
         self.builtInEvents = new (EVENT_EMITTER as any)();
         features.log.info(`Ready internal events - COMPLETED`);
 
-        features.log.info(`Connect to ${features.getPluginConfig().endpoint}`);
-        if (Tools.isNullOrUndefined(features.getPluginConfig().credentials)) {
+        features.log.info(`Connect to ${features.getPluginConfig<IPluginConfig>().endpoint}`);
+        if (Tools.isNullOrUndefined(features.getPluginConfig<IPluginConfig>().credentials)) {
           throw new Error('Plugin credentials not defined in sec.config.json');
         }
-        self.rabbitQConnection = await amqplib.connect(features.getPluginConfig().endpoint, {
-          credentials: amqplib.credentials.plain(features.getPluginConfig().credentials.username, features.getPluginConfig().credentials.password)
+        self.rabbitQConnection = await amqplib.connect(features.getPluginConfig<IPluginConfig>().endpoint, {
+          credentials: amqplib.credentials.plain(features.getPluginConfig<IPluginConfig>().credentials.username, features.getPluginConfig<IPluginConfig>().credentials.password)
         });
-        features.log.info(`Connected to ${features.getPluginConfig().endpoint}`);
+        features.log.info(`Connected to ${features.getPluginConfig<IPluginConfig>().endpoint}`);
 
         features.log.info(`Open emit channel (${self.emitExchange.name})`);
         self.rabbitQConnectionEmitChannel = await self.rabbitQConnection.createChannel();
         self.rabbitQConnectionEmitChannel.assertExchange(self.emitExchange.name, self.emitExchange.type, {
           durable: false
         });
-        features.log.info(`Open emit channel (${self.emitExchange.name}) - PREFETCH`);
-        self.rabbitQConnectionEmitChannel.prefetch(1);
+        features.log.info(`Open emit channel (${self.emitExchange.name}) - PREFETCH x${features.getPluginConfig<IPluginConfig>().prefetch}`);
+        self.rabbitQConnectionEmitChannel.prefetch(features.getPluginConfig<IPluginConfig>().prefetch);
         features.log.info(`Open emit channel (${self.emitExchange.name}) - COMPLETED`);
 
         features.log.info(`Open EAR channel (${self.earExchange.name})`);
@@ -74,13 +87,10 @@ export class Events implements IEvents {
         self.rabbitQConnectionEARChannel.assertExchange(self.earExchange.name, self.earExchange.type, {
           durable: false
         });
-        features.log.info(`Open EAR channel (${self.earExchange.name}) - PREFETCH`);
-        self.rabbitQConnectionEARChannel.prefetch(1);
+        features.log.info(`Open EAR channel (${self.earExchange.name}) - PREFETCH x${features.getPluginConfig<IPluginConfig>().prefetchEAR}`);
+        self.rabbitQConnectionEARChannel.prefetch(features.getPluginConfig<IPluginConfig>().prefetchEAR);
         features.log.info(`Open EAR channel (${self.earExchange.name}) - ${self.earExchange.myResponseName} - LISTEN`);
-        let eventEARQueue = self.rabbitQConnectionEmitChannel.assertQueue(`${OS.hostname()}-${self.earExchange.myResponseName}`, {
-          durable: false,
-          auto_delete: true
-        });
+        let eventEARQueue = self.rabbitQConnectionEmitChannel.assertQueue(`${OS.hostname()}-${self.earExchange.myResponseName}`, self.earExchangeQueue);
         eventEARQueue = eventEARQueue.then(function () {
           self.features.log.info(` - LISTEN: [${self.earExchange.myResponseName}] - LISTENING`);
         });
@@ -105,12 +115,8 @@ export class Events implements IEvents {
   onEvent<T = any> (plugin: string, pluginName: string | null, event: string, listener: (data: T) => void): void {
     const self = this;
     self.features.log.info(plugin, ` - LISTEN: [${`${pluginName || plugin}-${event}`}]`);
-    let qArguments: any = {
-      durable: false,
-      auto_delete: true
-    };
 
-    let ok = self.rabbitQConnectionEmitChannel.assertQueue(`${pluginName || plugin}-${event}`, qArguments);
+    let ok = self.rabbitQConnectionEmitChannel.assertQueue(`${pluginName || plugin}-${event}`, self.emitExchangeQueue);
     ok = ok.then(function () {
       self.features.log.info(plugin, ` - LISTEN: [${`${pluginName || plugin}-${event}`}] - LISTENING`);
     });
@@ -118,24 +124,22 @@ export class Events implements IEvents {
     ok = ok.then(function () {
       self.rabbitQConnectionEmitChannel.consume(`${pluginName || plugin}-${event}`, (msg: any) => {
         let body = msg.content.toString();
-        self.rabbitQConnectionEmitChannel.ack(msg);
         const bodyObj = JSON.parse(body) as any;
         listener(bodyObj as T);
+        self.rabbitQConnectionEmitChannel.ack(msg);
       }, { noAck: false });
     });
   }
   private _emitEvent<T = any> (plugin: string, pluginName: string | null, event: string, channel: any, data?: T, additionalArgs?: any): void {
     const self = this;
     self.features.log.debug(plugin, ` - EMIT: [${`${pluginName || plugin}-${event}`}]`, data);
-    let qArguments: any = {
-      durable: false,
-      auto_delete: true
-    };
+    let qArguments: any = undefined;
     if (!Tools.isNullOrUndefined(additionalArgs)) {
+      qArguments = JSON.parse(JSON.stringify(self.emitExchangeQueue));
       for (let iKey of Object.keys(additionalArgs))
         qArguments[iKey] = additionalArgs[iKey];
     }
-    var ok = channel.assertQueue(`${pluginName || plugin}-${event}`, qArguments);
+    var ok = channel.assertQueue(`${pluginName || plugin}-${event}`, qArguments || self.emitExchangeQueue);
 
     ok.then(function (_qok: any) {
       // NB: `sentToQueue` and `publish` both return a boolean
@@ -153,12 +157,8 @@ export class Events implements IEvents {
   onReturnableEvent<T = any> (plugin: string, pluginName: string | null, event: string, listener: (resolve: Function, reject: Function, data: T) => void): void {
     const self = this;
     self.features.log.info(plugin, ` - LISTEN EAR: [${`${pluginName || plugin}-${event}`}]`);
-    let qArguments: any = {
-      durable: false,
-      auto_delete: true
-    };
 
-    let ok = self.rabbitQConnectionEARChannel.assertQueue(`${pluginName || plugin}-${event}`, qArguments);
+    let ok = self.rabbitQConnectionEARChannel.assertQueue(`${pluginName || plugin}-${event}`, self.earExchangeQueue);
     ok = ok.then(function () {
       self.features.log.info(plugin, ` - LISTEN EAR: [${`${pluginName || plugin}-${event}`}] - LISTENING`);
     });
@@ -166,9 +166,9 @@ export class Events implements IEvents {
     ok = ok.then(function () {
       self.rabbitQConnectionEARChannel.consume(`${pluginName || plugin}-${event}`, (msg: any) => {
         let body = msg.content.toString();
-        self.rabbitQConnectionEARChannel.ack(msg);
         const bodyObj = JSON.parse(body) as transEAREvent<T>;
         listener((x: any) => {
+          self.rabbitQConnectionEARChannel.ack(msg);
           self.logger.debug(plugin, ` - RETURN OKAY: [${`${pluginName || plugin}-${event}`}]`, bodyObj);
           self._emitEvent(plugin, bodyObj.plugin, bodyObj.topic, self.rabbitQConnectionEARChannel, {
             data: x,
@@ -176,6 +176,7 @@ export class Events implements IEvents {
             resultSuccess: true
           } as internalEvent<T>);
         }, (x: any) => {
+          self.rabbitQConnectionEARChannel.ack(msg);
           self.logger.debug(plugin, ` - RETURN ERROR: [${`${pluginName || plugin}-${event}`}]`, bodyObj);
           self._emitEvent(plugin, bodyObj.plugin, bodyObj.topic, self.rabbitQConnectionEARChannel, {
             data: x,
