@@ -46,8 +46,8 @@ export class Events implements IEvents {
     durable: false,
     //exclusive: true,
     autoDelete: true,
-    //messageTtl: (60 * 60 * 10) * 1000, // 15 minutes
-    expires: (60 * 60 * 60) * 1000 // 60 minutes
+    messageTtl: (60 * 60 * 60) * 1000, // 60 minutes
+    //expires: (60 * 60 * 60) * 1000 // 60 minutes
   };
 
   init(features: PluginFeature): Promise<void> {
@@ -204,9 +204,9 @@ export class Events implements IEvents {
       const xtimeoutSeconds = timeoutSeconds || 10;
       const additionalArgs: any = {
         "$$TIME": new Date().getTime(),
-        messageTtl: (xtimeoutSeconds * 1000) + 5000,
+        expires: (xtimeoutSeconds * 1000) + 5000,
       };
-      if (additionalArgs.messageTtl >= self.earExchangeQueue) return reject(`TTL CANNOT BE GREATER THAN: ${self.earExchangeQueue-2}ms`)
+      if (additionalArgs.expires >= self.earExchangeQueue) return reject(`TTL CANNOT BE GREATER THAN: ${self.earExchangeQueue-2}ms`)
       let qArguments: any = JSON.parse(JSON.stringify(self.earExchangeQueue));
       for (let iKey of Object.keys(additionalArgs))
         qArguments[iKey] = additionalArgs[iKey];
