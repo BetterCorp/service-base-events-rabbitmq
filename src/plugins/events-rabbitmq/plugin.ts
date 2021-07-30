@@ -1,5 +1,5 @@
 import * as amqplib from 'amqplib';
-import { IEvents, IPluginLogger, PluginFeature } from '@bettercorp/service-base/lib/ILib';
+import { CEvents } from '@bettercorp/service-base/lib/ILib';
 import { v4 as UUID } from 'uuid';
 import { Tools } from '@bettercorp/tools/lib/Tools';
 import * as EVENT_EMITTER from 'events';
@@ -18,7 +18,7 @@ interface transEAREvent<T> {
   id: string;
 }
 
-export class Events implements IEvents {
+export class Events extends CEvents {
   private rabbitQConnection: any;
   private rabbitQConnectionEmitChannel: any;
   private readonly rabbitQConnectionEmitChannelKey = "eq";
@@ -26,8 +26,7 @@ export class Events implements IEvents {
   private readonly rabbitQConnectionEARChannelKey = "ar";
   private readonly rabbitQConnectionEARChannelKeyMine = "kr";
   private builtInEvents: any;
-  private features!: PluginFeature;
-  private logger!: IPluginLogger;
+  
   private readonly emitExchange: any = {
     type: 'fanout',
     name: 'better-service-emit'
@@ -50,40 +49,37 @@ export class Events implements IEvents {
     //expires: (60 * 60 * 60) * 1000 // 60 minutes
   };
 
-  init(features: PluginFeature): Promise<void> {
+  init(): Promise<void> {
     const self = this;
-    self.features = features;
-    self.logger = features.log;
-
     return new Promise(async (resolve, reject) => {
       try {
         await self._connectToAMQP();
         resolve();
       } catch (exce) {
-        features.log.error(exce);
+        self.log.fatal(exce);
         reject(exce);
       }
     });
   }
   private async _connectToAMQP() {
-    this.features.log.info(`Connect to ${ this.features.getPluginConfig<IPluginConfig>().endpoint }`);
-    if (Tools.isNullOrUndefined(this.features.getPluginConfig<IPluginConfig>().credentials)) {
+    this.log.info(`Connect to ${ this.getPluginConfig<IPluginConfig>().endpoint }`);
+    if (Tools.isNullOrUndefined(this.getPluginConfig<IPluginConfig>().credentials)) {
       throw new Error('Plugin credentials not defined in sec.config.json');
     }
-    this.rabbitQConnection = await amqplib.connect(this.features.getPluginConfig<IPluginConfig>().endpoint, {
-      credentials: amqplib.credentials.plain(this.features.getPluginConfig<IPluginConfig>().credentials.username, this.features.getPluginConfig<IPluginConfig>().credentials.password)
+    this.rabbitQConnection = await amqplib.connect(this.getPluginConfig<IPluginConfig>().endpoint, {
+      credentials: amqplib.credentials.plain(this.getPluginConfig<IPluginConfig>().credentials.username, this.getPluginConfig<IPluginConfig>().credentials.password)
     });
     const self = this;
     this.rabbitQConnection.on("error", (err: any) => {
       if (err.message !== "Connection closing") {
-        self.features.log.error('AMQP ERROR', err.message);
+        self.log.error('AMQP ERROR', err.message);
       }
     });
     this.rabbitQConnection.on("close", () => {
-      self.features.log.error('AMQP CONNECTION CLOSED');
-      throw 'AMQP Error: Connection closed';
+      self.log.error('AMQP CONNECTION CLOSED');
+      self.log.fatal('AMQP Error: Connection closed');
     });
-    this.features.log.info(`Connected to ${ this.features.getPluginConfig<IPluginConfig>().endpoint }`);
+    this.log.info(`Connected to ${ this.getPluginConfig<IPluginConfig>().endpoint }`);
 
     await this._setupEmitHandler();
     await this._setupEARHandler();
@@ -91,7 +87,7 @@ export class Events implements IEvents {
 
   private _emitEvent<T = any>(queueKey: string, queueAttr: any, plugin: string, pluginName: string | null, event: string, channel: any, data?: T, additionalArgs?: any): void {
     const self = this;
-    self.features.log.debug(plugin, ` - EMIT: [${ queueKey }-${ pluginName || plugin }-${ event }]`, data);
+    self.log.debug(plugin, ` - EMIT: [${ queueKey }-${ pluginName || plugin }-${ event }]`, data);
     let qArguments: any = undefined;
     if (!Tools.isNullOrUndefined(additionalArgs)) {
       qArguments = JSON.parse(JSON.stringify(queueAttr));
@@ -107,25 +103,25 @@ export class Events implements IEvents {
       // to fire before writing again. We're just doing the one write,
       // so we'll ignore it.
       channel.sendToQueue(`${ queueKey }-${ pluginName || plugin }-${ event }`, Buffer.from(JSON.stringify(data)));
-      self.features.log.debug(plugin, ` - EMIT: [${ queueKey }-${ pluginName || plugin }-${ event }] - EMITTED`, data);
+      self.log.debug(plugin, ` - EMIT: [${ queueKey }-${ pluginName || plugin }-${ event }] - EMITTED`, data);
     });
   }
 
   private async _setupEmitHandler() {
-    this.features.log.info(`Open emit channel (${ this.emitExchange.name })`);
+    this.log.info(`Open emit channel (${ this.emitExchange.name })`);
     this.rabbitQConnectionEmitChannel = await this.rabbitQConnection.createChannel();
     this.rabbitQConnectionEmitChannel.assertExchange(this.emitExchange.name, this.emitExchange.type, this.emitExchangeQueue);
-    this.features.log.info(`Open emit channel (${ this.emitExchange.name }) - PREFETCH x${ this.features.getPluginConfig<IPluginConfig>().prefetch }`);
-    this.rabbitQConnectionEmitChannel.prefetch(this.features.getPluginConfig<IPluginConfig>().prefetch);
-    this.features.log.info(`Open emit channel (${ this.emitExchange.name }) - COMPLETED`);
+    this.log.info(`Open emit channel (${ this.emitExchange.name }) - PREFETCH x${ this.getPluginConfig<IPluginConfig>().prefetch }`);
+    this.rabbitQConnectionEmitChannel.prefetch(this.getPluginConfig<IPluginConfig>().prefetch);
+    this.log.info(`Open emit channel (${ this.emitExchange.name }) - COMPLETED`);
   }
   onEvent<T = any>(plugin: string, pluginName: string | null, event: string, listener: (data: T) => void): void {
     const self = this;
-    self.features.log.info(plugin, ` - LISTEN: [${ self.rabbitQConnectionEmitChannelKey }-${ pluginName || plugin }-${ event }]`);
+    self.log.info(plugin, ` - LISTEN: [${ self.rabbitQConnectionEmitChannelKey }-${ pluginName || plugin }-${ event }]`);
 
     let ok = self.rabbitQConnectionEmitChannel.assertQueue(`${ self.rabbitQConnectionEmitChannelKey }-${ pluginName || plugin }-${ event }`, self.emitExchangeQueue);
     ok = ok.then(function () {
-      self.features.log.info(plugin, ` - LISTEN: [${ `${ self.rabbitQConnectionEmitChannelKey }-${ pluginName || plugin }-${ event }` }] - LISTENING`);
+      self.log.info(plugin, ` - LISTEN: [${ `${ self.rabbitQConnectionEmitChannelKey }-${ pluginName || plugin }-${ event }` }] - LISTENING`);
     });
     //ok = ok.then(function () { channel.prefetch(1); });
     ok = ok.then(function () {
@@ -143,45 +139,45 @@ export class Events implements IEvents {
 
 
   private async _setupEARHandler() {
-    this.features.log.info(`Ready my events name`);
-    this.earExchange.myResponseName = `${ this.features.cwd }`.replace(/[\W-]/g, '').toLowerCase() +
-      ((this.features.getPluginConfig<IPluginConfig>().noRandomDebugName === true ? '' : this.features.config.debug ? `-${ Math.random() }` : '')) +
-      (this.features.getPluginConfig<IPluginConfig>().uniqueId || '');
-    this.features.log.info(`Ready my events name - ${ this.earExchange.myResponseName }`);
+    this.log.info(`Ready my events name`);
+    this.earExchange.myResponseName = `${ this.cwd }`.replace(/[\W-]/g, '').toLowerCase() +
+      ((this.getPluginConfig<IPluginConfig>().noRandomDebugName === true ? '' : this.appConfig.runningInDebug || !this.appConfig.runningLive ? `-${ Math.random() }` : '')) +
+      (this.getPluginConfig<IPluginConfig>().uniqueId || '');
+    this.log.info(`Ready my events name - ${ this.earExchange.myResponseName }`);
 
-    this.features.log.info(`Ready internal events`);
+    this.log.info(`Ready internal events`);
     this.builtInEvents = new (EVENT_EMITTER as any)();
-    this.features.log.info(`Ready internal events - COMPLETED`);
+    this.log.info(`Ready internal events - COMPLETED`);
 
-    this.features.log.info(`Open EAR channel (${ this.earExchange.name })`);
+    this.log.info(`Open EAR channel (${ this.earExchange.name })`);
     this.rabbitQConnectionEARChannel = await this.rabbitQConnection.createChannel();
     this.rabbitQConnectionEARChannel.assertExchange(this.earExchange.name, this.earExchange.type, this.earExchangeQueue);
-    this.features.log.info(`Open EAR channel (${ this.earExchange.name }) - PREFETCH x${ this.features.getPluginConfig<IPluginConfig>().prefetchEAR }`);
-    this.rabbitQConnectionEARChannel.prefetch(this.features.getPluginConfig<IPluginConfig>().prefetchEAR);
-    this.features.log.info(`Open EAR channel (${ this.earExchange.name }) - ${ this.earExchange.myResponseName } - LISTEN`);
+    this.log.info(`Open EAR channel (${ this.earExchange.name }) - PREFETCH x${ this.getPluginConfig<IPluginConfig>().prefetchEAR }`);
+    this.rabbitQConnectionEARChannel.prefetch(this.getPluginConfig<IPluginConfig>().prefetchEAR);
+    this.log.info(`Open EAR channel (${ this.earExchange.name }) - ${ this.earExchange.myResponseName } - LISTEN`);
     let eventEARQueue = this.rabbitQConnectionEARChannel.assertQueue(`${ this.rabbitQConnectionEARChannelKeyMine }-${ OS.hostname() }-${ this.earExchange.myResponseName }`, this.earExchangeQueue);
     const self = this;
     eventEARQueue = eventEARQueue.then(function () {
-      self.features.log.info(` - LISTEN: [${ self.earExchange.myResponseName }] - LISTENING`);
+      self.log.info(` - LISTEN: [${ self.earExchange.myResponseName }] - LISTENING`);
     });
     eventEARQueue = eventEARQueue.then(function () {
       self.rabbitQConnectionEARChannel.consume(`${ self.rabbitQConnectionEARChannelKeyMine }-${ OS.hostname() }-${ self.earExchange.myResponseName }`, (msg: any) => {
         let body = msg.content.toString();
         self.rabbitQConnectionEARChannel.ack(msg);
-        self.features.log.debug(`[RECEVIED ${ self.earExchange.myResponseName }]:`, body);
+        self.log.debug(`[RECEVIED ${ self.earExchange.myResponseName }]:`, body);
         const bodyObj = JSON.parse(body) as internalEvent<any>;
         self.builtInEvents.emit(bodyObj.id, bodyObj);
       }, { noAck: false });
     });
-    this.features.log.info(`Open EAR channel (${ this.earExchange.name }) - COMPLETED`);
+    this.log.info(`Open EAR channel (${ this.earExchange.name }) - COMPLETED`);
   }
   onReturnableEvent<T = any>(plugin: string, pluginName: string | null, event: string, listener: (resolve: Function, reject: Function, data: T) => void): void {
     const self = this;
-    self.features.log.info(plugin, ` - LISTEN EAR: [${ self.rabbitQConnectionEARChannelKey }-${ pluginName || plugin }-${ event }]`);
+    self.log.info(plugin, ` - LISTEN EAR: [${ self.rabbitQConnectionEARChannelKey }-${ pluginName || plugin }-${ event }]`);
 
     let ok = self.rabbitQConnectionEARChannel.assertQueue(`${ self.rabbitQConnectionEARChannelKey }-${ pluginName || plugin }-${ event }`, self.earExchangeQueue);
     ok = ok.then(function () {
-      self.features.log.info(plugin, ` - LISTEN EAR: [${ self.rabbitQConnectionEARChannelKey }-${ pluginName || plugin }-${ event }] - LISTENING`);
+      self.log.info(plugin, ` - LISTEN EAR: [${ self.rabbitQConnectionEARChannelKey }-${ pluginName || plugin }-${ event }] - LISTENING`);
     });
     //ok = ok.then(function () { channel.prefetch(1); });
     ok = ok.then(function () {
@@ -190,7 +186,7 @@ export class Events implements IEvents {
         const bodyObj = JSON.parse(body) as transEAREvent<T>;
         listener((x: any) => {
           self.rabbitQConnectionEARChannel.ack(msg);
-          self.logger.debug(plugin, ` - RETURN OKAY: [${ self.rabbitQConnectionEARChannelKeyMine }-${ pluginName || plugin }-${ event }]`, bodyObj);
+          self.log.debug(plugin, ` - RETURN OKAY: [${ self.rabbitQConnectionEARChannelKeyMine }-${ pluginName || plugin }-${ event }]`, bodyObj);
           self._emitEvent(self.rabbitQConnectionEARChannelKeyMine, self.earExchangeQueue, plugin, bodyObj.plugin, bodyObj.topic, self.rabbitQConnectionEARChannel, {
             data: x,
             id: bodyObj.id,
@@ -198,7 +194,7 @@ export class Events implements IEvents {
           } as internalEvent<T>);
         }, (x: any) => {
           self.rabbitQConnectionEARChannel.ack(msg);
-          self.logger.debug(plugin, ` - RETURN ERROR: [${ self.rabbitQConnectionEARChannelKeyMine }-${ pluginName || plugin }-${ event }]`, bodyObj);
+          self.log.debug(plugin, ` - RETURN ERROR: [${ self.rabbitQConnectionEARChannelKeyMine }-${ pluginName || plugin }-${ event }]`, bodyObj);
           self._emitEvent(self.rabbitQConnectionEARChannelKeyMine, self.earExchangeQueue, plugin, bodyObj.plugin, bodyObj.topic, self.rabbitQConnectionEARChannel, {
             data: x,
             id: bodyObj.id,
@@ -210,7 +206,7 @@ export class Events implements IEvents {
   }
   emitEventAndReturn<T1 = any, T2 = void>(plugin: string, pluginName: string | null, event: string, data?: T1, timeoutSeconds: number = 10): Promise<T2> {
     const self = this;
-    this.logger.debug(plugin, ` - EMIT EAR: [${ self.rabbitQConnectionEARChannelKey }-${ pluginName || plugin }-${ event }]`, data);
+    this.log.debug(plugin, ` - EMIT EAR: [${ self.rabbitQConnectionEARChannelKey }-${ pluginName || plugin }-${ event }]`, data);
     return new Promise((resolve, reject) => {
       const resultKey = `${ UUID() }-${ new Date().getTime() }${ Math.random() }`;
       const xtimeoutSeconds = timeoutSeconds || 10;
@@ -225,8 +221,8 @@ export class Events implements IEvents {
 
       const listener = (data: internalEvent<T2>) => {
         if (timeoutTimer === null)
-          return this.logger.debug(plugin, ` - REC EAR TOO LATE: [${ self.rabbitQConnectionEARChannelKey }-${ pluginName || plugin }-${ event }]`, data.resultSuccess ? 'SUCCESS' : 'ERRORED', data);
-        this.logger.debug(plugin, ` - REC EAR: [${ self.rabbitQConnectionEARChannelKey }-${ pluginName || plugin }-${ event }]`, data.resultSuccess ? 'SUCCESS' : 'ERRORED', data);
+          return this.log.debug(plugin, ` - REC EAR TOO LATE: [${ self.rabbitQConnectionEARChannelKey }-${ pluginName || plugin }-${ event }]`, data.resultSuccess ? 'SUCCESS' : 'ERRORED', data);
+        this.log.debug(plugin, ` - REC EAR: [${ self.rabbitQConnectionEARChannelKey }-${ pluginName || plugin }-${ event }]`, data.resultSuccess ? 'SUCCESS' : 'ERRORED', data);
         clearTimeout(timeoutTimer);
         timeoutTimer = null;
         if (data.resultSuccess)
@@ -241,7 +237,7 @@ export class Events implements IEvents {
         clearTimeout(timeoutTimer);
         timeoutTimer = null;
         self.builtInEvents.removeListener(resultKey, listener);
-        self.features.log.debug(plugin, ` - EMIT AR: [${ self.rabbitQConnectionEARChannelKey }-${ pluginName || plugin }-${ event }-${ resultKey }]`, 'TIMED OUT');
+        self.log.debug(plugin, ` - EMIT AR: [${ self.rabbitQConnectionEARChannelKey }-${ pluginName || plugin }-${ event }-${ resultKey }]`, 'TIMED OUT');
         reject(`NO RESPONSE IN TIME: ${ self.rabbitQConnectionEARChannelKey }-${ pluginName || plugin }/${ resultKey } x${ ((data || {}) as any).timeoutSeconds || 10 }s`);
       }, timeoutSeconds * 1000);
 
@@ -254,7 +250,7 @@ export class Events implements IEvents {
         topic: self.earExchange.myResponseName
       } as transEAREvent<T1>, qArguments);
 
-      self.features.log.debug(plugin, ` - EMIT EAR: [${ self.rabbitQConnectionEARChannelKey }-${ pluginName || plugin }-${ event }-${ resultKey }] - EMITTED`, data);
+      self.log.debug(plugin, ` - EMIT EAR: [${ self.rabbitQConnectionEARChannelKey }-${ pluginName || plugin }-${ event }-${ resultKey }] - EMITTED`, data);
     });
   }
 }
