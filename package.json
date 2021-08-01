@@ -18,10 +18,10 @@
   "main": "lib/index.js",
   "version": "1.0.20210611100102",
   "dependencies": {
-    "@bettercorp/service-base": "^5.0.20210630044405-featurev5",
-    "@bettercorp/tools": "^1.1.20210611125606",
+    "@bettercorp/service-base": "^5.1.20210701165109",
+    "@bettercorp/tools": "^1.1.20210611181403",
     "@types/amqplib": "^0.5.17",
-    "@types/node": "^14.17.5",
+    "@types/node": "^14.17.7",
     "@types/uuid": "^8.3.1",
     "amqplib": "^0.8.0",
     "uuid": "^8.3.2"
