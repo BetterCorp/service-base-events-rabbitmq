@@ -2,7 +2,6 @@
   "compilerOptions": {
     "baseUrl": ".",
     "paths": { "*": ["types/*"] },
-    "target": "es2017",
     "module": "commonjs",
     "noImplicitReturns": true,
     "noUnusedLocals": true,
@@ -10,6 +9,7 @@
     "rootDir": "src",
     "sourceMap": true,
     "strict": true,
+    "target": "es2017",
     "declaration": true
   },
   "linterOptions": {
