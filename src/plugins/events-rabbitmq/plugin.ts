@@ -1,29 +1,24 @@
 import * as amqplib from 'amqplib';
-import { randomUUID } from 'crypto';
-import { CEvents } from '@bettercorp/service-base/lib/ILib';
+import { CEvents } from '@bettercorp/service-base/lib/interfaces/events';
 import { Tools } from '@bettercorp/tools/lib/Tools';
-import * as OS from 'os';
 import { IPluginConfig } from './sec.config';
-import { Rabbit } from 'rabbit-queue';
+import { emit } from './events/emit';
+import { emitAndReturn } from './events/emitAndReturn';
+import { emitStreamAndReceiveStream } from './events/emitStreamAndReceiveStream';
+import { randomUUID } from 'crypto';
+import { hostname } from 'os';
+import { Readable } from 'stream';
 
 export class Events extends CEvents {
-  private appId!: string;
-  private rabbitQConnection!: Rabbit;
-  private readonly rabbitQConnectionEmitChannelKey = "eq";
-  private readonly rabbitQConnectionEARChannelKey = "ar";
+  publishConnection!: amqplib.Connection;
+  receiveConnection!: amqplib.Connection;
+  myId!: string;
+  private ear: emitAndReturn = new emitAndReturn();
+  private emit: emit = new emit();
+  private eas: emitStreamAndReceiveStream = new emitStreamAndReceiveStream();
 
-  init(): Promise<void> {
-    const self = this;
-    return new Promise(async (resolve, reject) => {
-      try {
-        self.appId = `${ OS.hostname() }-${ randomUUID() }`;
-        await self._connectToAMQP();
-        resolve();
-      } catch (exce) {
-        self.log.fatal(exce);
-        reject(exce);
-      }
-    });
+  async init(): Promise<void> {
+    await this._connectToAMQP();
   }
   private async _connectToAMQP() {
     const pluginConfig = (await this.getPluginConfig<IPluginConfig>());
@@ -32,89 +27,56 @@ export class Events extends CEvents {
     if (!Tools.isNullOrUndefined(pluginConfig.credentials)) {
       socketOptions.credentials = amqplib.credentials.plain('radmin', 'TLvGnHd9a9ndmo2nBepNxFXFprQ9eCpEvXp6qKN2YPBqUVN2va');
     }
-
-    this.rabbitQConnection = new Rabbit(pluginConfig.endpoint, {
-      prefetch: pluginConfig.prefetch,
-      replyPattern: true,
-      scheduledPublish: false,
-      prefix: '',
-      socketOptions
+    this.publishConnection = await amqplib.connect((await this.getPluginConfig<IPluginConfig>()).endpoint, {
+      credentials: amqplib.credentials.plain((await this.getPluginConfig<IPluginConfig>()).credentials.username, (await this.getPluginConfig<IPluginConfig>()).credentials.password)
     });
-
+    this.receiveConnection = await amqplib.connect((await this.getPluginConfig<IPluginConfig>()).endpoint, {
+      credentials: amqplib.credentials.plain((await this.getPluginConfig<IPluginConfig>()).credentials.username, (await this.getPluginConfig<IPluginConfig>()).credentials.password)
+    });
     const self = this;
-    this.rabbitQConnection.on('log', (component, level, ...args): void | any => {
-      if (Tools.isFunction((self.log as any)[level]))
-        return (self.log as any)[level](component, args);
-      if ('trace' === level)
-        return self.log.debug(component, args);
-      self.log.info(component, args);
+    this.publishConnection.on("error", (err: any) => {
+      if (err.message !== "Connection closing") {
+        self.log.error('AMQP ERROR', err.message);
+      }
     });
-
-    await new Promise((r: any) => {
-      this.rabbitQConnection.on('connected', r);
+    this.receiveConnection.on("error", (err: any) => {
+      if (err.message !== "Connection closing") {
+        self.log.error('AMQP ERROR', err.message);
+      }
     });
-    this.log.info(`Connected to ${ pluginConfig.endpoint }`);
-
-    this.rabbitQConnection.on('disconnected', (err = new Error('Rabbitmq Disconnected')) => {
-      self.log.error(err);
+    this.publishConnection.on("close", () => {
       self.log.error('AMQP CONNECTION CLOSED');
       self.log.fatal('AMQP Error: Connection closed');
     });
-  }
-
-  async onEvent<ArgsDataType = any>(callerPluginName: string, pluginName: string, event: string, listener: (data: ArgsDataType) => void): Promise<void> {
-    const self = this;
-    self.log.info(callerPluginName, ` - LISTEN: [${ self.rabbitQConnectionEmitChannelKey }-${ pluginName || callerPluginName }-${ event }]`);
-
-    this.rabbitQConnection.createQueue(`${ self.rabbitQConnectionEmitChannelKey }-${ pluginName || callerPluginName }-${ event }`, { durable: true }, (msg, ack) => {
-      let body = msg.content.toString();
-      const bodyObj = JSON.parse(body) as any;
-      listener(bodyObj as ArgsDataType);
-      ack(null);
-    }).then(() => {
-      self.log.info(callerPluginName, ` - LISTEN: [${ self.rabbitQConnectionEmitChannelKey }-${ pluginName || callerPluginName }-${ event }] - LISTENING`);
+    this.receiveConnection.on("close", () => {
+      self.log.error('AMQP CONNECTION CLOSED');
+      self.log.fatal('AMQP Error: Connection closed');
     });
-  }
-  async emitEvent<T = any>(plugin: string, pluginName: string | null, event: string, data?: T): Promise<void> {
-    await this.rabbitQConnection.publish(`${ this.rabbitQConnectionEmitChannelKey }-${ pluginName || plugin }-${ event }`, data, {
-      persistent: false,
-      expiration: ((60 * 60 * 60 * 6) * 1000), // 6h
-      appId: this.appId,
-      correlationId: this.appId + randomUUID()
-    })
-      .then(this.log.debug)
-      .catch(this.log.fatal);
+    this.log.info(`Connected to ${ (await this.getPluginConfig<IPluginConfig>()).endpoint }x2`);
+
+    this.myId = `${ (await this.getPluginConfig<IPluginConfig>()).uniqueId || hostname() }-${ randomUUID() }`;
+    await this.emit.init(this);
+    await this.ear.init(this);
+    await this.eas.init(this);
   }
 
-  async onReturnableEvent<ArgsDataType = any, ResolveDataType = any, RejectDataType = any>(callerPluginName: string, pluginName: string, event: string, listener: { (resolve: { (...args: ResolveDataType[]): void; }, reject: { (...args: RejectDataType[]): void; }, data: ArgsDataType): void; }): Promise<void> {
-    this.log.info(callerPluginName, ` - LISTEN EAR: [${ this.rabbitQConnectionEARChannelKey }-${ pluginName || callerPluginName }-${ event }]`);
-
-    const self = this;
-    this.rabbitQConnection
-      .createQueue(`${ self.rabbitQConnectionEARChannelKey }-${ pluginName || callerPluginName }-${ event }`, { durable: false }, (msg, ack) => {
-        let body = msg.content.toString();
-        let bodyObj: ArgsDataType = JSON.parse(body);
-        listener((x: any) => {
-          self.log.debug(callerPluginName, ` - RETURN OKAY: [${ self.rabbitQConnectionEARChannelKey }-${ pluginName || callerPluginName }-${ event }]`, bodyObj);
-          ack(null, x);
-        }, (x: any) => {
-          self.log.debug(callerPluginName, ` - RETURN ERROR: [${ self.rabbitQConnectionEARChannelKey }-${ pluginName || callerPluginName }-${ event }]`, bodyObj);
-          ack(x);
-        }, bodyObj);
-      })
-      .then(() => {
-        self.log.info(callerPluginName, ` - LISTEN EAR: [${ self.rabbitQConnectionEARChannelKey }-${ pluginName || callerPluginName }-${ event }] - LISTENING`);
-      });
+  async onEvent<T = any>(callerPluginName: string, pluginName: string | null, event: string, listener: (data: T) => Promise<void>): Promise<void> {
+    return await this.emit.onEvent(callerPluginName, pluginName, event, listener);
   }
-  emitEventAndReturn<T1 = any, T2 = void>(plugin: string, pluginName: string | null, event: string, data?: T1, timeoutSeconds: number = 10): Promise<T2> {
-    const self = this;
-    this.log.debug(plugin, ` - EMIT EAR: [${ self.rabbitQConnectionEARChannelKey }-${ pluginName || plugin }-${ event }]`, data);
-    const xtimeoutSeconds = timeoutSeconds || 10;
-    return this.rabbitQConnection.getReply(`${ this.rabbitQConnectionEARChannelKey }-${ pluginName || plugin }-${ event }`, data, {
-      persistent: false,
-      expiration: ((xtimeoutSeconds * 1000) + 5000),
-      appId: this.appId,
-      correlationId: this.appId + randomUUID()
-    }, '', xtimeoutSeconds * 1000);
+  async emitEvent<T = any>(callerPluginName: string, pluginName: string | null, event: string, data?: T): Promise<void> {
+    return await this.emit.emitEvent(callerPluginName, pluginName, event, data);
+  }
+
+  async onReturnableEvent<ArgsDataType = any, ReturnDataType = any>(callerPluginName: string, pluginName: string, event: string, listener: { (data: ArgsDataType): Promise<ReturnDataType>; }): Promise<void> {
+    return await this.ear.onReturnableEvent(callerPluginName, pluginName, event, listener);
+  }
+  async emitEventAndReturn<ArgsDataType = any, ReturnDataType = any>(callerPluginName: string, pluginName: string, event: string, data?: ArgsDataType, timeoutSeconds?: number): Promise<ReturnDataType> {
+    return this.ear.emitEventAndReturn(callerPluginName, pluginName, event, data, timeoutSeconds);
+  }
+  async receiveStream(callerPluginName: string, listener: (error: Error | null, stream: Readable) => Promise<void>, timeoutSeconds: number): Promise<string> {
+    return this.eas.receiveStream(callerPluginName, listener, timeoutSeconds);
+  }
+  async sendStream(callerPluginName: string, streamId: string, stream: Readable): Promise<void> {
+    return this.eas.sendStream(callerPluginName, streamId, stream);
   }
 }
