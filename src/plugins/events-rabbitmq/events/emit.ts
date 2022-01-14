@@ -21,8 +21,8 @@ export class emit {
   private readonly queueOpts: amqplib.Options.AssertQueue = {
     durable: true,
     autoDelete: true,
-    messageTtl: (60 * 60 * 6) * 1000 // 6h
-    //expires: (60*60*360)*1000 // 360 minutes
+    messageTtl: (60 * 60) * 1000, // 1h
+    expires: (60 * 60) * 1000, // 1h
   };
   async init(uSelf: Events) {
     this.uSelf = uSelf;

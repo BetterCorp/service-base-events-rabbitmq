@@ -23,13 +23,15 @@ export class emitAndReturn extends EventEmitter {
   private readonly queueOpts: amqplib.Options.AssertQueue = {
     durable: false,
     autoDelete: true,
-    messageTtl: (60 * 60) * 1000, // 60 minutes
+    messageTtl: 60 * 1000, // 60 seconds
+    expires: 60000, // 60s
   };
   private readonly myQueueOpts: amqplib.Options.AssertQueue = {
     exclusive: true,
     durable: false,
     autoDelete: true,
-    messageTtl: (60 * 60) * 1000, // 60 minutes
+    messageTtl: 60 * 1000, // 60 seconds
+    expires: 60000, // 60s
   };
 
   async init(uSelf: Events) {
@@ -70,7 +72,7 @@ export class emitAndReturn extends EventEmitter {
       let body = msg.content.toString();
       const bodyObj = JSON.parse(body) as ArgsDataType;
       try {
-        const response = await listener(bodyObj);
+        const response = (await listener(bodyObj)) || null;
         self.receiveChannel.ack(msg);
         self.uSelf.log.info(callerPluginName, `EAR: ${ callerPluginName } OKAY: ${ queueKey } -> ${ returnQueue }`);
         if (!self.publishChannel.sendToQueue(returnQueue, Buffer.from(JSON.stringify(response)), {
