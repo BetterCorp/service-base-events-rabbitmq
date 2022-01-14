@@ -21,9 +21,11 @@ export class Events extends CEvents {
     await this._connectToAMQP();
   }
   private async _connectToAMQP() {
-    this.log.info(`Connect to ${ (await this.getPluginConfig<IPluginConfig>()).endpoint }`);
-    if (Tools.isNullOrUndefined((await this.getPluginConfig<IPluginConfig>()).credentials)) {
-      throw new Error('Plugin credentials not defined in sec.config.json');
+    const pluginConfig = (await this.getPluginConfig<IPluginConfig>());
+    this.log.info(`Connect to ${ pluginConfig.endpoint }`);
+    let socketOptions: any = {};
+    if (!Tools.isNullOrUndefined(pluginConfig.credentials)) {
+      socketOptions.credentials = amqplib.credentials.plain('radmin', 'TLvGnHd9a9ndmo2nBepNxFXFprQ9eCpEvXp6qKN2YPBqUVN2va');
     }
     this.publishConnection = await amqplib.connect((await this.getPluginConfig<IPluginConfig>()).endpoint, {
       credentials: amqplib.credentials.plain((await this.getPluginConfig<IPluginConfig>()).credentials.username, (await this.getPluginConfig<IPluginConfig>()).credentials.password)
