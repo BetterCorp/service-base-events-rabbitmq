@@ -34,11 +34,13 @@ export class emitStreamAndReceiveStream {
   }
 
   async setupChannelsIfNotSetup() {
-    if (this.publishChannel === undefined) {
+    if (this.publishChannel === undefined)
       this.publishChannel = await LIB.setupChannel(this.uSelf, this.uSelf.publishConnection, this.eventsChannelKey, this.exchange.name, this.exchange.type, this.exchangeOpts);
+    if (this.receiveChannel === undefined)
       this.receiveChannel = await LIB.setupChannel(this.uSelf, this.uSelf.receiveConnection, this.eventsChannelKey, this.exchange.name, this.exchange.type, this.exchangeOpts, 2);
+    if (this.streamChannel === undefined)
       this.streamChannel = await LIB.setupChannel(this.uSelf, this.uSelf.receiveConnection, this.streamChannelKey, this.exchange.name, this.exchange.type, this.exchangeOpts, 2);
-    }
+
   }
 
   receiveStream(callerPluginName: string, listener: { (error: Error | null, stream: Readable): Promise<void>; }, timeoutSeconds = 5): Promise<string> {
@@ -222,6 +224,7 @@ export class emitStreamAndReceiveStream {
     let thisTimeoutMS = self.staticCommsTimeout;
     this.uSelf.log.info(`SS: ${ callerPluginName } emitting ${ streamEventsRefId }`);
     return new Promise(async (resolveI, rejectI) => {
+      await self.setupChannelsIfNotSetup();
       await self.receiveChannel.assertQueue(streamReturnRefId, self.queueOpts);
       let lastResponseTimeoutHandler: NodeJS.Timeout | null = null;
       let lastResponseTimeoutCount: number = 1;
