@@ -59,19 +59,26 @@ export class emitStreamAndReceiveStream {
       let lastResponseTimeoutHandler: NodeJS.Timeout | null = null;
       let lastResponseTimeoutCount: number = 1;
       let receiptTimeoutHandler: NodeJS.Timeout | null;
+      let createTimeout = (e: string): void => { throw 'not setup yet : createTimeout'; };
       const cleanup = async () => {
+        createTimeout = (e) => {
+            self.uSelf.log.debug('voided timeout creator: ' + e)
+        };
         self.uSelf.log.debug('Cleanup stuff');
         if (receiptTimeoutHandler !== null) {
           clearTimeout(receiptTimeoutHandler);
-          receiptTimeoutHandler = null;
         }
+        receiptTimeoutHandler = null;
         if (lastResponseTimeoutHandler !== null) {
           clearTimeout(lastResponseTimeoutHandler);
-          lastResponseTimeoutHandler = null;
         }
+        lastResponseTimeoutHandler = null;
+        lastResponseTimeoutCount = -2;
         await self.receiveChannel.deleteQueue(streamEventsRefId);
         await self.streamChannel.deleteQueue(streamRefId);
-        if (stream !== null && !stream.destroyed) stream.destroy();
+        if (stream !== null && !stream.destroyed) {
+          stream.destroy();
+        }
       };
       receiptTimeoutHandler = setTimeout(async () => {
         self.uSelf.log.debug('Receive Receipt Timeout');
@@ -89,36 +96,39 @@ export class emitStreamAndReceiveStream {
           throw `Cannot send msg to queue [${ streamRefId }]`;
         await listener(err, null!);
       }, thisTimeoutMS);
-      const updateLastResponseTimer = () => {
-        lastResponseTimeoutCount = 1;
-        if (lastResponseTimeoutHandler === null) {
-          let createTimeout = (): void => { throw 'not setup yet : createTimeout'; };
-          const timeoutFunc = async () => {
-            if (lastResponseTimeoutCount > 0) {
-              lastResponseTimeoutCount--;
-              createTimeout();
-              return;
-            }
-            const err = new Error('Receive Active Timeout');
-            self.uSelf.log.error(err);
-            await cleanup();
-            if (!self.publishChannel.sendToQueue(streamReturnRefId, Buffer.from(JSON.stringify({
-              type: 'timeout',
-              data: err
-            })), {
-              expiration: self.queueOpts.messageTtl,
-              correlationId: streamId,
-              appId: self.uSelf.myId,
-              timestamp: new Date().getTime()
-            }))
-              throw `Cannot send msg to queue [${ streamRefId }]`;
-            await listener(err, null!);
-          };
-          createTimeout = () => {
-            lastResponseTimeoutHandler = setTimeout(timeoutFunc, thisTimeoutMS);
-          };
-          createTimeout();
+      const timeoutFunc = async () => {
+        if (lastResponseTimeoutHandler === null) return;
+        if (lastResponseTimeoutCount === -2) return;
+        if (lastResponseTimeoutCount > 0) {
+          lastResponseTimeoutCount--;
+          createTimeout('timeoutFunc');
+          return;
         }
+        const err = new Error('Receive Active Timeout');
+        self.uSelf.log.error(err);
+        await cleanup();
+        if (!self.publishChannel.sendToQueue(streamReturnRefId, Buffer.from(JSON.stringify({
+          type: 'timeout',
+          data: err
+        })), {
+          expiration: self.queueOpts.messageTtl,
+          correlationId: streamId,
+          appId: self.uSelf.myId,
+          timestamp: new Date().getTime()
+        }))
+          throw `Cannot send msg to queue [${ streamRefId }]`;
+        await listener(err, null!);
+      };
+      createTimeout = () => {
+        if (lastResponseTimeoutCount === -2) return;
+        if (lastResponseTimeoutHandler === null) {
+          lastResponseTimeoutHandler = setTimeout(timeoutFunc, thisTimeoutMS);
+        }
+      };
+      const updateLastResponseTimer = () => {
+        if (lastResponseTimeoutCount === -2) return;
+        lastResponseTimeoutCount = 1;
+        createTimeout('updateLastResponseTimer');
       };
       const startStream = async () => {
         self.uSelf.log.debug('START STREAM RECEIVER');
@@ -144,13 +154,10 @@ export class emitStreamAndReceiveStream {
             },
           });
           self.uSelf.log.debug(`[R RECEVIED ${ streamRefId }] ${ streamId }`);
-          stream.on('end', () => {
-            self.uSelf.log.debug('STREAM ENDED DST');
-          });
-          let eventsToListenTo = ['error', 'close', 'end'];
+          let eventsToListenTo = ['error', 'end'];
           for (let evnt of eventsToListenTo)
             stream.on(evnt, async (e: any, b: any) => {
-              if (evnt === 'close')
+              if (evnt === 'end')
                 await cleanup();
               if (b === 'RECEIVED') return;
               if (!self.publishChannel.sendToQueue(streamReturnRefId, Buffer.from(JSON.stringify({ type: 'event', event: evnt, data: e || null })), {
@@ -173,7 +180,6 @@ export class emitStreamAndReceiveStream {
             self.streamChannel.ack(sMsg);
           }, { noAck: false });
           listener(null, stream).then(async () => {
-            await cleanup();
             self.uSelf.log.info('stream OK');
           }).catch(async (x: Error) => {
             self.uSelf.log.error('Stream NOT OK', x);
@@ -234,6 +240,7 @@ export class emitStreamAndReceiveStream {
       const cleanup = async (eType: string, e?: Error) => {
         self.uSelf.log.debug('cleanup:', eType);
         stream.destroy(e);
+
         if (receiptTimeoutHandler !== null)
           clearTimeout(receiptTimeoutHandler);
         if (lastResponseTimeoutHandler !== null)
