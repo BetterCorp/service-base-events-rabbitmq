@@ -413,6 +413,7 @@ export class emitStreamAndReceiveStream {
         });
       }
       let pushingData = false;
+      let streamStarted = false;
       const pushData = () => {
         if (pushingData) return;
         pushingData = true;
@@ -464,9 +465,10 @@ export class emitStreamAndReceiveStream {
             const readData = stream.read();
             if (!stream.readable || readData === null) {
               self.uSelf.log.info("Stream no longer readable.");
-              pushData();
+              if (!streamStarted) pushData();
               return;
             }
+            streamStarted = true;
             if (
               !self.publishChannel.sendToQueue(streamRefId, readData, {
                 expiration: self.queueOpts.messageTtl,
