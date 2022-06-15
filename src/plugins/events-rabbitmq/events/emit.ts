@@ -41,8 +41,12 @@ export class emit {
     await self.receiveChannel.consume(thisQueueKey, async (msg: any) => {
       let body = msg.content.toString();
       const bodyObj = JSON.parse(body) as any;
-      await listener(bodyObj as T);
-      self.receiveChannel.ack(msg);
+      try {
+        await listener(bodyObj as T);
+        self.receiveChannel.ack(msg);
+      } catch (err) {
+        self.receiveChannel.reject(msg, true);
+      }
     }, { noAck: false });
   }
   async emitEvent<T = any>(callerPluginName: string, pluginName: string | null, event: string, data?: T): Promise<void> {
