@@ -11,8 +11,10 @@ export enum DataType {
 }
 
 export interface IPluginConfig {
+  fatalOnDisconnect: boolean;
   prefetch: number;
-  endpoint: string;
+  endpoint?: string;
+  endpoints?: Array<string>;
   credentials: IPluginConfig_Credentials;
   uniqueId: string | null;
 }
@@ -23,8 +25,10 @@ export interface IPluginConfig_Credentials {
 
 export default () => {
   return {
+    fatalOnDisconnect: true,
     prefetch: 10,
-    endpoint: "amqp://localhost",
+    //endpoint: "amqp://localhost",
+    endpoints: ["amqp://localhost"],
     credentials: {
       username: "guest",
       password: "guest"
