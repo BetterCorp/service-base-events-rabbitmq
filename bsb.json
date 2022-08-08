@@ -1,6 +1,6 @@
 [{
   "key": "events-rabbitmq",
   "name": "RabbitMQ",
-  "icon": "plugin-events-rabbitmq.png",
+  "icon": "events-rabbitmq.png",
   "description": "RabbitMQ events plugin"
 }]
