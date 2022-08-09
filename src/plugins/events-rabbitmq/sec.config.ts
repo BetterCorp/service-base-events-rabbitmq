@@ -1,29 +1,29 @@
 export enum DataType {
-  string = 'string',
-  number = 'number',
-  bigint = 'bigint',
-  boolean = 'boolean',
-  symbol = 'symbol',
-  undefined = 'undefined',
-  object = 'object',
-  function = 'function',
-  eventEmiiter = 'eventEmiiter'
+  string = "string",
+  number = "number",
+  bigint = "bigint",
+  boolean = "boolean",
+  symbol = "symbol",
+  undefined = "undefined",
+  object = "object",
+  function = "function",
+  eventEmiiter = "eventEmiiter",
 }
 
 export interface IPluginConfig {
-  fatalOnDisconnect: boolean;
-  prefetch: number;
-  endpoint?: string;
-  endpoints?: Array<string>;
-  credentials: IPluginConfig_Credentials;
-  uniqueId: string | null;
+  fatalOnDisconnect: boolean; // Disconnect on error: Cause the bsb service to exit code 1 if the connection drops
+  prefetch: number; // Prefetch: The RabbitMQ Prefetch amount
+  endpoint?: string; // Endpoint: The server endpoint - or use endpoints for a cluster
+  endpoints?: Array<string>; // Endpoints: The list of servers(cluster) to connect too - use Endpoint for a single server
+  credentials: IPluginConfig_Credentials; // Credentials for server authorization
+  uniqueId?: string; // Unique Client ID: A static client Id - hostname is used when not set
 }
 export interface IPluginConfig_Credentials {
-  username: string;
-  password: string;
+  username: string; // Username
+  password: string; // Password
 }
 
-export default () => {
+export default (): IPluginConfig => {
   return {
     fatalOnDisconnect: true,
     prefetch: 10,
@@ -31,8 +31,8 @@ export default () => {
     endpoints: ["amqp://localhost"],
     credentials: {
       username: "guest",
-      password: "guest"
+      password: "guest",
     },
-    uniqueId: null
+    uniqueId: undefined,
   };
-}
+};
