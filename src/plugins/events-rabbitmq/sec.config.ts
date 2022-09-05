@@ -1,3 +1,6 @@
+import { SecConfig } from "@bettercorp/service-base/lib/interfaces/serviceConfig";
+import { Tools } from "@bettercorp/tools/lib/Tools";
+
 export enum DataType {
   string = "string",
   number = "number",
@@ -10,11 +13,10 @@ export enum DataType {
   eventEmiiter = "eventEmiiter",
 }
 
-export interface IPluginConfig {
+export interface PluginConfig {
   fatalOnDisconnect: boolean; // Disconnect on error: Cause the bsb service to exit code 1 if the connection drops
   prefetch: number; // Prefetch: The RabbitMQ Prefetch amount
-  endpoint?: string; // Endpoint: The server endpoint - or use endpoints for a cluster
-  endpoints?: Array<string>; // Endpoints: The list of servers(cluster) to connect too - use Endpoint for a single server
+  endpoints: Array<string>; // Endpoints: The list of servers(cluster) to connect too
   credentials: IPluginConfig_Credentials; // Credentials for server authorization
   uniqueId?: string; // Unique Client ID: A static client Id - hostname is used when not set
 }
@@ -23,16 +25,34 @@ export interface IPluginConfig_Credentials {
   password: string; // Password
 }
 
-export default (): IPluginConfig => {
-  return {
-    fatalOnDisconnect: true,
-    prefetch: 10,
-    //endpoint: "amqp://localhost",
-    endpoints: ["amqp://localhost"],
-    credentials: {
-      username: "guest",
-      password: "guest",
-    },
-    uniqueId: undefined,
-  };
-};
+export class Config extends SecConfig<PluginConfig> {
+  migrate(
+    mappedPluginName: string,
+    existingConfig: PluginConfig
+  ): PluginConfig {
+    let resultConfig: PluginConfig = {
+      fatalOnDisconnect: existingConfig.fatalOnDisconnect || true,
+      prefetch: existingConfig.prefetch || 10,
+      endpoints: ((existingConfig as any).endpoint !== undefined
+        ? [(existingConfig as any).endpoint]
+        : existingConfig.endpoints) || ["amqp://localhost"],
+      credentials: existingConfig.credentials || {},
+      uniqueId: existingConfig.uniqueId,
+    };
+
+    if (
+      resultConfig.endpoints.length === 0 ||
+      resultConfig.endpoints.filter((x) => !Tools.isString(x)).length > 0
+    ) {
+      resultConfig.endpoints = ["amqp://localhost"];
+    }
+    if (resultConfig.endpoints.length === 1) {
+      resultConfig.fatalOnDisconnect = true;
+    }
+    resultConfig.credentials.username =
+      (resultConfig.credentials || {}).username || "guest";
+    resultConfig.credentials.password =
+      (resultConfig.credentials || {}).password || "guest";
+    return resultConfig;
+  }
+}
