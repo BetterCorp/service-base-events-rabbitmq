@@ -34,13 +34,14 @@ export class LIB {
     exName: string,
     exType: string,
     exOpts: amqplib.Options.AssertExchange,
-    prefetch?: number
+    prefetch?: number,
+    json: boolean = true
   ): Promise<amqplib.ChannelWrapper> {
     return new Promise(async (resolve) => {
       let returned = false;
       uSelf.log.debug(`Create channel ({queueKey})`, { queueKey });
       const channel = await connection.createChannel({
-        json: true,
+        json,
         setup: async (ichannel: amqplibCore.ConfirmChannel) => {
           await ichannel.assertExchange(exName, exType, exOpts);
           if (!Tools.isNullOrUndefined(prefetch)) {

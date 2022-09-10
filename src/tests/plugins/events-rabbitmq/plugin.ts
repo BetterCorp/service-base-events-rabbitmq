@@ -2,8 +2,8 @@ import { IPluginLogger, LogMeta } from '@bettercorp/service-base';
 import assert from "assert";
 //import { Logger } from "./test-logger";
 import { Events as events } from "../../../plugins/events-rabbitmq/plugin";
-import { emit } from "./events/emit";
-import { emitAndReturn } from "./events/emitAndReturn";
+//import { emit } from "./events/emit";
+//import { emitAndReturn } from "./events/emitAndReturn";
 import { emitStreamAndReceiveStream } from "./events/emitStreamAndReceiveStream";
 
 //const fakeCLogger = new Logger("test-plugin", process.cwd(), {} as any);
@@ -51,7 +51,7 @@ const getPluginConfig = async () => {
     "fatalOnDisconnect": true,
     "prefetch": 10,
     "endpoints": [
-      "amqp://127.0.0.1:5673"
+      "amqp://127.0.0.1:5672"
     ],
     "credentials": {
       "username": "guest",
@@ -61,23 +61,23 @@ const getPluginConfig = async () => {
 }
 
 describe("plugins/events-default", () => {
-  emit(async () => {
+  /*emit(async () => {
     const refP = new events("test-plugin", process.cwd(), fakeLogger);
     (refP as any).getPluginConfig = getPluginConfig;
     if (refP.init !== undefined) await refP.init();
     return refP;
-  }, 500);
+  }, 50);
   emitAndReturn(async () => {
     const refP = new events("test-plugin", process.cwd(), fakeLogger);
     (refP as any).getPluginConfig = getPluginConfig;
     if (refP.init !== undefined) await refP.init();
     return refP;
-  }, 500);
+  }, 50);*/
   emitStreamAndReceiveStream(async () => {
     const refP = new events("test-plugin", process.cwd(), fakeLogger);
     (refP as any).getPluginConfig = getPluginConfig;
     if (refP.init !== undefined) await refP.init();
     //refP.eas.staticCommsTimeout = 25;
     return refP;
-  }, 500);
+  }, 2000);
 });

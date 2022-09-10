@@ -1,15 +1,22 @@
+import { EventsBase } from '@bettercorp/service-base';
 import assert from "assert";
 import { randomUUID } from "crypto";
-import { Events } from "../../../../plugins/events-rabbitmq/plugin";
 
 const randomName = () => randomUUID();
 
 export function emitAndReturn(
-  genNewPlugin: { (): Promise<Events> },
+  genNewPlugin: { (): Promise<EventsBase> },
   maxTimeoutToExpectAResponse: number,
   a = true,
   b = true
 ) {
+  let emitter: EventsBase;
+  beforeEach(async () => {
+    emitter = await genNewPlugin();
+  });
+  afterEach(function () {
+    emitter.dispose();
+  });
   describe("EmitAndReturn", async () => {
     //if (a) this.timeout(maxTimeoutToExpectAResponse + 20);
     //if (b) this.afterEach(done => setTimeout(done, maxTimeoutToExpectAResponse));
@@ -21,7 +28,7 @@ export function emitAndReturn(
         const thisCaller = randomName();
         const thisPlugin = randomName();
         const thisEvent = randomName();
-        const emitter = await genNewPlugin();
+        
         const emitTimeout = setTimeout(() => {
           assert.fail("Event not received");
         }, timermaxTimeoutToExpectAResponse);
@@ -48,12 +55,12 @@ export function emitAndReturn(
         console.log("++Received onEvent");
         clearTimeout(emitTimeout);
         assert.ok(true, "Received Response");
-        emitter.dispose();
+        
       });
       it("should be able to emit to events with self", async () => {
         const thisCaller = randomName();
         const thisEvent = randomName();
-        const emitter = await genNewPlugin();
+        
         const emitTimeout = setTimeout(() => {
           assert.fail("Event not received");
         }, timermaxTimeoutToExpectAResponse);
@@ -75,14 +82,14 @@ export function emitAndReturn(
         );
         clearTimeout(emitTimeout);
         assert.ok(true, "Received Response");
-        emitter.dispose();
+        
       });
       it("should not be able to emit to other events with plugin name defined", async () => {
         const thisCaller = randomName();
         const thisPlugin = randomName();
         const thisEvent = randomName();
         const thisEvent2 = randomName();
-        const emitter = await genNewPlugin();
+        
         const emitTimeout = setTimeout(() => {
           assert.ok(true);
         }, timermaxTimeoutToExpectAResponse);
@@ -108,13 +115,13 @@ export function emitAndReturn(
           clearTimeout(emitTimeout);
           assert.ok("Timeout of EEAR");
         }
-        emitter.dispose();
+        
       });
       it("should not be able to emit to other events with self", async () => {
         const thisCaller = randomName();
         const thisEvent = randomName();
         const thisEvent2 = randomName();
-        const emitter = await genNewPlugin();
+        
         const emitTimeout = setTimeout(() => {
           assert.ok(true);
         }, timermaxTimeoutToExpectAResponse);
@@ -140,12 +147,12 @@ export function emitAndReturn(
           clearTimeout(emitTimeout);
           assert.ok("Timeout of EEAR");
         }
-        emitter.dispose();
+        
       });
       it("should timeout correctly", async () => {
         const thisCaller = randomName();
         const thisEvent = randomName();
-        const emitter = await genNewPlugin();
+        
         const emitTimeout = setTimeout(() => {
           assert.fail("Event not received");
         }, timermaxTimeoutToExpectAResponse);
@@ -169,12 +176,12 @@ export function emitAndReturn(
           clearTimeout(emitTimeout);
           assert.ok("Timeout of EEAR");
         }
-        emitter.dispose();
+        
       });
       it("should response error correctly", async () => {
         const thisCaller = randomName();
         const thisEvent = randomName();
-        const emitter = await genNewPlugin();
+        
         const emitTimeout = setTimeout(() => {
           assert.fail("Event not received");
         }, timermaxTimeoutToExpectAResponse);
@@ -201,7 +208,7 @@ export function emitAndReturn(
           assert.ok("EEAR");
           assert.strictEqual(exc, "THISISANERROR");
         }
-        emitter.dispose();
+        
       });
     });
     const typesToTest = [
@@ -256,7 +263,7 @@ export function emitAndReturn(
           const thisCaller = randomName();
           const thisPlugin = randomName();
           const thisEvent = randomName();
-          const emitter = await genNewPlugin();
+          
           const emitTimeout = setTimeout(() => {
             assert.fail("Event not received");
           }, timermaxTimeoutToExpectAResponse);
@@ -282,12 +289,12 @@ export function emitAndReturn(
               ? typeToTest.rData
               : typeToTest.data)
           );
-          emitter.dispose();
+          
         });
         it("should be able to emit to events with self", async () => {
           const thisCaller = randomName();
           const thisEvent = randomName();
-          const emitter = await genNewPlugin();
+          
           const emitTimeout = setTimeout(() => {
             assert.fail("Event not received - timeout");
           }, timermaxTimeoutToExpectAResponse);
@@ -319,14 +326,14 @@ export function emitAndReturn(
             "Returned data"
           );
           clearTimeout(emitTimeout);
-          emitter.dispose();
+          
         });
         it("should not be able to emit to other events with plugin name defined", async () => {
           const thisCaller = randomName();
           const thisPlugin = randomName();
           const thisEvent = randomName();
           const thisEvent2 = randomName();
-          const emitter = await genNewPlugin();
+          
           const emitTimeout = setTimeout(() => {
             assert.ok(true);
           }, timermaxTimeoutToExpectAResponse);
@@ -352,13 +359,13 @@ export function emitAndReturn(
             clearTimeout(emitTimeout);
             assert.ok("Timeout of EEAR");
           }
-          emitter.dispose();
+          
         });
         it("should not be able to emit to other events with self", async () => {
           const thisCaller = randomName();
           const thisEvent = randomName();
           const thisEvent2 = randomName();
-          const emitter = await genNewPlugin();
+          
           const emitTimeout = setTimeout(() => {
             assert.ok(true);
           }, timermaxTimeoutToExpectAResponse);
@@ -384,12 +391,12 @@ export function emitAndReturn(
             clearTimeout(emitTimeout);
             assert.ok("Timeout of EEAR");
           }
-          emitter.dispose();
+          
         });
         it("should timeout correctly - general timeout", async () => {
           const thisCaller = randomName();
           const thisEvent = randomName();
-          const emitter = await genNewPlugin();
+          
           const emitTimeout = setTimeout(() => {
             assert.fail("Event not received");
           }, timermaxTimeoutToExpectAResponse + 10);
@@ -413,12 +420,12 @@ export function emitAndReturn(
             clearTimeout(emitTimeout);
             assert.ok("Timeout of EEAR");
           }
-          emitter.dispose();
+          
         });
         it("should timeout correctly - no receipt", async () => {
           const thisCaller = randomName();
           const thisEvent = randomName();
-          const emitter = await genNewPlugin();
+          
           const emitTimeout = setTimeout(() => {
             assert.fail("Event not received");
           }, timermaxTimeoutToExpectAResponse + 10);
@@ -436,12 +443,12 @@ export function emitAndReturn(
             clearTimeout(emitTimeout);
             assert.ok("Timeout of EEAR");
           }
-          emitter.dispose();
+          
         });
         it("should response error correctly", async () => {
           const thisCaller = randomName();
           const thisEvent = randomName();
-          const emitter = await genNewPlugin();
+          
           const emitTimeout = setTimeout(() => {
             assert.fail("Event not received");
           }, timermaxTimeoutToExpectAResponse);
@@ -471,7 +478,7 @@ export function emitAndReturn(
               JSON.stringify(typeToTest.rData || typeToTest.data)
             );
           }
-          emitter.dispose();
+          
         });
       });
     }
