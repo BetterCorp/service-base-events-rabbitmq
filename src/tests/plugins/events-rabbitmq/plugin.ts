@@ -1,10 +1,10 @@
-import { IPluginLogger, LogMeta } from '@bettercorp/service-base';
+import { IPluginLogger, LogMeta } from "@bettercorp/service-base";
 import assert from "assert";
 //import { Logger } from "./test-logger";
 import { Events as events } from "../../../plugins/events-rabbitmq/plugin";
-//import { emit } from "./events/emit";
-//import { emitAndReturn } from "./events/emitAndReturn";
-import { emitStreamAndReceiveStream } from "./events/emitStreamAndReceiveStream";
+import { emit } from "@bettercorp/service-base/lib/tests/plugins/events/events/emit";
+import { emitAndReturn } from "@bettercorp/service-base/lib/tests/plugins/events/events/emitAndReturn";
+import { emitStreamAndReceiveStream } from "@bettercorp/service-base/lib/tests/plugins/events/events/emitStreamAndReceiveStream";
 
 //const fakeCLogger = new Logger("test-plugin", process.cwd(), {} as any);
 //const debug = console.log;
@@ -48,20 +48,18 @@ const fakeLogger: IPluginLogger = {
 
 const getPluginConfig = async () => {
   return {
-    "fatalOnDisconnect": true,
-    "prefetch": 10,
-    "endpoints": [
-      "amqp://127.0.0.1:5672"
-    ],
-    "credentials": {
-      "username": "guest",
-      "password": "guest"
-    }
+    fatalOnDisconnect: true,
+    prefetch: 10,
+    endpoints: ["amqp://127.0.0.1:5672"],
+    credentials: {
+      username: "guest",
+      password: "guest",
+    },
   };
-}
+};
 
 describe("plugins/events-default", () => {
-  /*emit(async () => {
+  emit(async () => {
     const refP = new events("test-plugin", process.cwd(), fakeLogger);
     (refP as any).getPluginConfig = getPluginConfig;
     if (refP.init !== undefined) await refP.init();
@@ -72,7 +70,7 @@ describe("plugins/events-default", () => {
     (refP as any).getPluginConfig = getPluginConfig;
     if (refP.init !== undefined) await refP.init();
     return refP;
-  }, 50);*/
+  }, 50);
   emitStreamAndReceiveStream(async () => {
     const refP = new events("test-plugin", process.cwd(), fakeLogger);
     (refP as any).getPluginConfig = getPluginConfig;
