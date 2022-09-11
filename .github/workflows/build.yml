@@ -41,7 +41,7 @@ jobs:
       - run: docker run -td -p ${{ steps.availablePort.outputs.AVAILABLE_PORT }}:5672 --name "BUILDRABBITMQBSBTEST${{ matrix.node-version }}" -e RABBITMQ_DEFAULT_USER=guest -e RABBITMQ_DEFAULT_PASS=guest rabbitmq:3-management
       - run: docker ps
       - run: echo "$(docker ps -aqf 'name=BUILDRABBITMQBSBTEST${{ matrix.node-version }}')"
-      - run: docker logs "$(docker ps -aqf 'name=BUILDRABBITMQBSBTEST${{ matrix.node-version }}')"d
+      - run: docker logs "$(docker ps -aqf 'name=BUILDRABBITMQBSBTEST${{ matrix.node-version }}')"
       - run: npm run test
 
       - name: Test Report ${{ matrix.node-version }}
