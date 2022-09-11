@@ -1,0 +1,141 @@
+name: Build and Publish (RC)
+
+on:
+  push:
+    branches:
+      - "master"
+
+jobs:
+  build_and_publish_rc:
+    runs-on: ubuntu-latest
+
+    strategy:
+      matrix:
+        node-version: [16.x, 18.x]
+        #experimental: [false]
+        #include:
+        #  - node-version: 19.x
+        #    experimental: true
+
+    #continue-on-error: ${{ matrix.experimental }}
+
+    outputs:
+      version: ${{ steps.semver.outputs.version }}
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+
+      - name: Use Node.js ${{ matrix.node-version }}
+        uses: actions/setup-node@v3
+        with:
+          node-version: ${{ matrix.node-version }}
+          cache: "npm"
+
+      - name: availablePort
+        id: availablePort
+        run: echo "::set-output name=AVAILABLE_PORT::$(comm -23 <(seq 49152 65535) <(ss -tan | awk '{print $4}' | cut -d':' -f2 | grep "[0-9]\{1,5\}" | sort | uniq) | shuf | head -n 1)"
+
+      - run: npm i -g typescript ts-node
+      - run: tsc -v ; ts-node -v
+      - run: npm ci
+
+      - name: semver
+        id: semver
+        uses: paulhatch/semantic-version@v4.0.3
+        with:
+          tag_prefix: "v"
+          branch: master
+          major_pattern: "(MAJOR)"
+          minor_pattern: "(MINOR)"
+          format: "${major}.${minor}.${patch}-rc.${increment}"
+          change_path: "./"
+          bump_each_commit: true
+          namespace: ""
+
+      - run: rm -f ~/.npmrc ; rm -f ./.npmrc ; echo "//registry.npmjs.org/:_authToken=${{ secrets.NPM2_TOKEN_PUB }}" > ./.npmrc
+      - run: |
+          git config user.name "${{ secrets.NPM_NAME }}";
+          git config user.email "${{ secrets.NPM_EMAIL }}";
+          echo "Hello $(git config --get user.name)";
+
+      - name: output version
+        run: |
+          echo "Setting version too: ${{ steps.semver.outputs.version }}";
+
+      - run: npm version ${{ steps.semver.outputs.version }}
+      - run: sed -i 's/127.0.0.1:5672/127.0.0.1:${{ steps.availablePort.outputs.AVAILABLE_PORT }}/' ./events-rabbitmq-plugin-config.json
+      - run: echo "rabbit running on port ${{ steps.availablePort.outputs.AVAILABLE_PORT }}"
+      - run: npm run build
+      - run: docker run -td -p ${{ steps.availablePort.outputs.AVAILABLE_PORT }}:5672 --name "MASTERRABBITMQBSBTEST${{ matrix.node-version }}" -e RABBITMQ_DEFAULT_USER=guest -e RABBITMQ_DEFAULT_PASS=guest rabbitmq:3-management
+      - run: npm run test
+      - run: git restore ./events-rabbitmq-plugin-config.json
+
+      - name: Test Report ${{ matrix.node-version }}
+        uses: dorny/test-reporter@v1.5.0
+        with:
+          name: Tests
+          path: junit.json
+          reporter: mocha-json
+
+      - name: Upload coverage reports to Codecov
+        if: contains(matrix.node-version, '18.x')
+        uses: codecov/codecov-action@v3
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          directory: coverage
+
+      - run: npm publish --tag rc
+        if: contains(matrix.node-version, '18.x')
+
+      - run: npm pack
+        if: contains(matrix.node-version, '18.x')
+
+      - uses: actions/upload-artifact@v2
+        if: contains(matrix.node-version, '18.x')
+        with:
+          name: published-package
+          path: bettercorp-service-base-*.tgz
+
+      - name: cleanup
+        if: always()
+        run: rm -f ~/.npmrc ; rm -f ./.npmrc;
+
+      - name: cleanup docker
+        if: always()
+        run: docker rm -f "MASTERRABBITMQBSBTEST${{ matrix.node-version }}"
+
+  
+#  docs_build_rc:
+#    runs-on: ubuntu-latest
+#    needs: [build_and_publish_rc]
+#
+#    strategy:
+#      matrix:
+#        node-version: [16.x]
+#        # See supported Node.js release schedule at https://nodejs.org/en/about/releases/
+#
+#    steps:
+#      - name: Checkout
+#        uses: actions/checkout@v3
+#        with:
+#          fetch-depth: 0
+#
+#      - name: Use Node.js ${{ matrix.node-version }}
+#        uses: actions/setup-node@v3
+#        with:
+#          node-version: ${{ matrix.node-version }}
+#          cache: "npm"
+#          
+#      - run: npm ci
+#        working-directory: documentation/
+#
+#      - run: npm run build
+#        working-directory: documentation/
+#
+#      - name: Update site
+#        uses: cloudflare/wrangler-action@2.0.0
+#        with:
+#          apiToken: ${{ secrets.CF_API_TOKEN }}
+#          accountId: ${{ secrets.CF_ACCOUNT_ID }}
+#          command: pages publish documentation/.vuepress/dist --project-name=bsb-documentation --commit-dirty=true --branch=rc

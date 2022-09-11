@@ -1,0 +1,94 @@
+name: Build Plugin
+
+on:
+  pull_request:
+  push:
+    branches:
+      - "**"
+      - "!develop"
+      - "!master"
+    tags-ignore:
+      - "**"
+
+jobs:
+  build-plugin:
+    runs-on: ubuntu-latest
+
+    strategy:
+      matrix:
+        node-version: [16.x, 18.x]
+
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Use Node.js ${{ matrix.node-version }}
+        uses: actions/setup-node@v3
+        with:
+          node-version: ${{ matrix.node-version }}
+          cache: "npm"
+
+      - name: availablePort
+        id: availablePort
+        run: echo "::set-output name=AVAILABLE_PORT::$(comm -23 <(seq 49152 65535) <(ss -tan | awk '{print $4}' | cut -d':' -f2 | grep "[0-9]\{1,5\}" | sort | uniq) | shuf | head -n 1)"
+      - run: sed -i 's/127.0.0.1:5672/127.0.0.1:${{ steps.availablePort.outputs.AVAILABLE_PORT }}/' ./events-rabbitmq-plugin-config.json
+      - run: echo "rabbit running on port ${{ steps.availablePort.outputs.AVAILABLE_PORT }}"
+        
+      - run: npm i -g typescript ts-node
+      - run: tsc -v ; ts-node -v
+      - run: npm ci
+      - run: npm run build
+      - run: docker pull rabbitmq:3-management
+      - run: docker run -td -p ${{ steps.availablePort.outputs.AVAILABLE_PORT }}:5672 --name "BUILDRABBITMQBSBTEST${{ matrix.node-version }}" -e RABBITMQ_DEFAULT_USER=guest -e RABBITMQ_DEFAULT_PASS=guest rabbitmq:3-management
+      - run: docker ps
+      - run: echo "$(docker ps -aqf 'name=BUILDRABBITMQBSBTEST${{ matrix.node-version }}')"
+      - run: (docker logs -f "$(docker ps -aqf 'name=BUILDRABBITMQBSBTEST${{ matrix.node-version }}')" & ) | grep -q "Ready to start client connection listeners"
+      - run: docker logs "$(docker ps -aqf 'name=BUILDRABBITMQBSBTEST${{ matrix.node-version }}')"
+      - run: npm run test
+
+      - name: Test Report ${{ matrix.node-version }}
+        uses: dorny/test-reporter@v1.5.0
+        with:
+          name: Tests
+          path: junit.json
+          reporter: mocha-json
+
+      - name: Upload coverage reports to Codecov
+        if: contains(matrix.node-version, '18.x')
+        uses: codecov/codecov-action@v3
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          directory: coverage
+
+      - name: cleanup
+        if: always()
+        run: rm -f ~/.npmrc ; rm -f ./.npmrc;
+
+      - name: cleanup docker
+        if: always()
+        run: docker rm -f "BUILDRABBITMQBSBTEST${{ matrix.node-version }}"
+
+  #docs_build_:
+  #  runs-on: ubuntu-latest
+  #
+  #  strategy:
+  #    matrix:
+  #      node-version: [16.x]
+  #      # See supported Node.js release schedule at https://nodejs.org/en/about/releases/
+  #
+  #  steps:
+  #    - name: Checkout
+  #      uses: actions/checkout@v3
+  #      with:
+  #        fetch-depth: 0
+  #
+  #    - name: Use Node.js ${{ matrix.node-version }}
+  #      uses: actions/setup-node@v3
+  #      with:
+  #        node-version: ${{ matrix.node-version }}
+  #        cache: "npm"
+  #
+  #    - run: npm ci
+  #      working-directory: documentation/
+  #
+  #    - run: npm run build
+  #      working-directory: documentation/
