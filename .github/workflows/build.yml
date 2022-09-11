@@ -42,6 +42,7 @@ jobs:
       - run: docker ps
       - run: echo "$(docker ps -aqf 'name=BUILDRABBITMQBSBTEST${{ matrix.node-version }}')"
       - run: (docker logs -f "$(docker ps -aqf 'name=BUILDRABBITMQBSBTEST${{ matrix.node-version }}')" & ) | grep -q "Ready to start client connection listeners"
+      - run: docker logs "$(docker ps -aqf 'name=BUILDRABBITMQBSBTEST${{ matrix.node-version }}')"
       - run: npm run test
 
       - name: Test Report ${{ matrix.node-version }}
