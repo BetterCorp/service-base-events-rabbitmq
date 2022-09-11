@@ -50,7 +50,7 @@ const getPluginConfig = async () => {
   return {
     fatalOnDisconnect: true,
     prefetch: 10,
-    endpoints: ["amqp://127.0.0.1:5672"],
+    endpoints: ["amqp://127.0.0.1:15672"],
     credentials: {
       username: "guest",
       password: "guest",
