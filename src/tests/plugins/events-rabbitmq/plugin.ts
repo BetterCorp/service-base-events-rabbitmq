@@ -5,10 +5,11 @@ import { Events as events } from "../../../plugins/events-rabbitmq/plugin";
 import { emit } from "@bettercorp/service-base/lib/tests/plugins/events/events/emit";
 import { emitAndReturn } from "@bettercorp/service-base/lib/tests/plugins/events/events/emitAndReturn";
 import { emitStreamAndReceiveStream } from "@bettercorp/service-base/lib/tests/plugins/events/events/emitStreamAndReceiveStream";
+import { readFileSync } from 'fs';
 
 //const fakeCLogger = new Logger("test-plugin", process.cwd(), {} as any);
-const debug = console.log;
-//const debug = (...a: any) => {};
+//const debug = console.log;
+const debug = (...a: any) => {};
 const fakeLogger: IPluginLogger = {
   reportStat: async (key, value): Promise<void> => {},
   info: async (message, meta, hasPIData): Promise<void> => {
@@ -47,15 +48,7 @@ const fakeLogger: IPluginLogger = {
 };
 
 const getPluginConfig = async () => {
-  return {
-    fatalOnDisconnect: true,
-    prefetch: 10,
-    endpoints: ["amqp://127.0.0.1:15672"],
-    credentials: {
-      username: "guest",
-      password: "guest",
-    },
-  };
+  return JSON.parse(readFileSync('./events-rabbitmq-plugin-config.json').toString());
 };
 
 describe("plugins/events-rabbitmq", () => {
