@@ -35,7 +35,7 @@ const fakeLogger: IPluginLogger = {
     meta?: LogMeta<any>,
     hasPIData?: boolean
   ): Promise<void> => {
-    console.error(messageOrError, meta);
+    console.error('FATAL', messageOrError, meta);
     process.exit(2);
   },
   debug: async (message, meta, hasPIData): Promise<void> => {

@@ -61,10 +61,10 @@ export class LIB {
         },
       });
       channel.on("close", () => {
-        uSelf.log.fatal(`AMQP channel ({queueKey}) close`, { queueKey });
+        uSelf.log.warn(`AMQP channel ({queueKey}) close`, { queueKey });
       });
       channel.on("error", (err: any) => {
-        uSelf.log.error(`AMQP channel ({queueKey}) error: {err}`, {
+        uSelf.log.fatal(`AMQP channel ({queueKey}) error: {err}`, {
           queueKey,
           err: err.message || err,
         });
