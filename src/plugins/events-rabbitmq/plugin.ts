@@ -46,31 +46,42 @@ export class Events extends EventsBase<PluginConfig> {
       socketOptions
     );
     const self = this;
-    this.publishConnection.on("connect", (data: any) => {
-      self.log.info("AMQP CONNECTED: {url}", { url: data.url });
+    this.publishConnection.on("connect", async (data: any) => {
+      await self.log.info("AMQP CONNECTED: {url}", { url: data.url });
     });
-    this.publishConnection.on("connectFailed", (data: any) => {
-      self.log.error("AMQP CONNECT FAIL: {url} ({msg})", { url: data.url, msg: data.err.toString() });
-    });
-    this.publishConnection.on("error", (err: any) => {
+    this.publishConnection.on(
+      "connectFailed",
+      async (data: any): Promise<any> => {
+        if (pluginConfig.fatalOnDisconnect)
+          return await self.log.fatal("AMQP CONNECT FAIL: {url} ({msg})", {
+            url: data.url,
+            msg: data.err.toString(),
+          });
+        await self.log.error("AMQP CONNECT FAIL: {url} ({msg})", {
+          url: data.url,
+          msg: data.err.toString(),
+        });
+      }
+    );
+    this.publishConnection.on("error", async (err: any) => {
       if (err.message !== "Connection closing") {
-        self.log.error("AMQP ERROR: {message}", { message: err.message });
+        await self.log.error("AMQP ERROR: {message}", { message: err.message });
       }
     });
-    this.receiveConnection.on("error", (err: any) => {
+    this.receiveConnection.on("error", async (err: any) => {
       if (err.message !== "Connection closing") {
-        self.log.error("AMQP ERROR: {message}", { message: err.message });
+        await self.log.error("AMQP ERROR: {message}", { message: err.message });
       }
     });
-    this.publishConnection.on("close", () => {
-      self.log.error("AMQP CONNECTION CLOSED");
+    this.publishConnection.on("close", async (): Promise<any> => {
       if (pluginConfig.fatalOnDisconnect)
-        self.log.fatal("AMQP Error: Connection closed");
+        return await self.log.fatal("AMQP Error: Connection closed");
+      await self.log.error("AMQP CONNECTION CLOSED");
     });
-    this.receiveConnection.on("close", () => {
-      self.log.error("AMQP CONNECTION CLOSED");
+    this.receiveConnection.on("close", async (): Promise<any> => {
       if (pluginConfig.fatalOnDisconnect)
-        self.log.fatal("AMQP Error: Connection closed");
+        return await self.log.fatal("AMQP Error: Connection closed");
+      await self.log.error("AMQP CONNECTION CLOSED");
     });
 
     this.log.info(`Connected to {endpoints}x2? (s:{sendS}/p:{pubS})`, {
@@ -78,7 +89,6 @@ export class Events extends EventsBase<PluginConfig> {
       sendS: this.receiveConnection.isConnected(),
       pubS: this.publishConnection.isConnected(),
     });
-
 
     this.myId = `${
       (await this.getPluginConfig()).uniqueId || hostname()
@@ -119,7 +129,12 @@ export class Events extends EventsBase<PluginConfig> {
     event: string,
     listener: { (args: Array<any>): Promise<any> }
   ): Promise<void> {
-    await this.ear.onReturnableEvent(callerPluginName, pluginName, event, listener);
+    await this.ear.onReturnableEvent(
+      callerPluginName,
+      pluginName,
+      event,
+      listener
+    );
   }
   public async emitEventAndReturn(
     callerPluginName: string,

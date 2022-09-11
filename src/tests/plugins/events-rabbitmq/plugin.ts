@@ -23,7 +23,7 @@ const fakeLogger: IPluginLogger = {
     meta?: LogMeta<any>,
     hasPIData?: boolean
   ): Promise<void> => {
-    debug(messageOrError, meta);
+    console.error(messageOrError, meta);
     assert.fail(
       typeof messageOrError === "string"
         ? new Error(messageOrError)
@@ -35,12 +35,8 @@ const fakeLogger: IPluginLogger = {
     meta?: LogMeta<any>,
     hasPIData?: boolean
   ): Promise<void> => {
-    debug(messageOrError, meta);
-    assert.fail(
-      typeof messageOrError === "string"
-        ? new Error(messageOrError)
-        : messageOrError
-    );
+    console.error(messageOrError, meta);
+    process.exit(2);
   },
   debug: async (message, meta, hasPIData): Promise<void> => {
     debug(message, meta);
