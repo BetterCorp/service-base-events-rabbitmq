@@ -16,6 +16,24 @@
     },
     {
       "img": "https://img.shields.io/github/issues-raw/BetterCorp/service-base-events-rabbitmq"
+    },
+    {
+      "img": "https://github.com/BetterCorp/service-base-events-rabbitmq/actions/workflows/develop.yml/badge.svg?branch=develop"
+    },
+    {
+      "img": "https://github.com/BetterCorp/service-base-events-rabbitmq/actions/workflows/master.yml/badge.svg?branch=master"
+    },
+    {
+      "img": "https://img.shields.io/github/issues-raw/BetterCorp/service-base-events-rabbitmq"
+    },
+    {
+      "img": "https://img.shields.io/npm/dt/@bettercorp/service-base-events-rabbitmq"
+    },
+    {
+      "img": "https://img.shields.io/bundlephobia/min/@bettercorp/service-base-events-rabbitmq"
+    },
+    {
+      "img": "https://img.shields.io/npm/v/@bettercorp/service-base-events-rabbitmq"
     }
   ]
 }
