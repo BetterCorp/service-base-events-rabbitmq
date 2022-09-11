@@ -7,8 +7,8 @@ import { emitAndReturn } from "@bettercorp/service-base/lib/tests/plugins/events
 import { emitStreamAndReceiveStream } from "@bettercorp/service-base/lib/tests/plugins/events/events/emitStreamAndReceiveStream";
 
 //const fakeCLogger = new Logger("test-plugin", process.cwd(), {} as any);
-//const debug = console.log;
-const debug = (...a: any) => {};
+const debug = console.log;
+//const debug = (...a: any) => {};
 const fakeLogger: IPluginLogger = {
   reportStat: async (key, value): Promise<void> => {},
   info: async (message, meta, hasPIData): Promise<void> => {
