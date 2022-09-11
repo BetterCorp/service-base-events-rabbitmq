@@ -31,7 +31,7 @@ jobs:
       - run: tsc -v ; ts-node -v
       - run: npm ci
       - run: npm run build
-      - run: docker run -td -p 15672:5672 --name "RABBITMQBSBTEST${{ matrix.node-version }}" -e RABBITMQ_DEFAULT_USER=guest -e RABBITMQ_DEFAULT_PASS=guest rabbitmq:3-management
+      - run: docker run -td -p 15672:5672 --name "BUILDRABBITMQBSBTEST${{ matrix.node-version }}" -e RABBITMQ_DEFAULT_USER=guest -e RABBITMQ_DEFAULT_PASS=guest rabbitmq:3-management
       - run: npm run test
 
       - name: Test Report ${{ matrix.node-version }}
@@ -54,7 +54,7 @@ jobs:
 
       - name: cleanup docker
         if: always()
-        run: docker rm -f "RABBITMQBSBTEST${{ matrix.node-version }}"
+        run: docker rm -f "BUILDRABBITMQBSBTEST${{ matrix.node-version }}"
 
   #docs_build_:
   #  runs-on: ubuntu-latest
