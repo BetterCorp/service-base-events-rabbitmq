@@ -15,7 +15,7 @@
     "lib/**/*"
   ],
   "main": "lib/index.js",
-  "version": "3.0.0",
+  "version": "3.0.0-rc",
   "bsb_project": true,
   "devDependencies": {
     "@types/amqplib": "^0.8.2",

@@ -150,7 +150,7 @@ export class emitAndReturn extends EventEmitter {
               if (
                 !self.publishChannel.sendToQueue(
                   returnQueue,
-                  response, //Buffer.from(JSON.stringify(response)),
+                  response,
                   {
                     expiration: 5000,
                     correlationId: `${msg.properties.correlationId}-resolve`,
@@ -170,7 +170,7 @@ export class emitAndReturn extends EventEmitter {
               if (
                 !self.publishChannel.sendToQueue(
                   returnQueue,
-                  exc, //Buffer.from(JSON.stringify(exc)),
+                  exc,
                   {
                     expiration: 5000,
                     correlationId: `${msg.properties.correlationId}-reject`,
@@ -228,16 +228,16 @@ export class emitAndReturn extends EventEmitter {
       }, timeoutSeconds * 1000);
       self.once(`${resultKey}-resolve`, (rargs: string) => {
         clearTimeout(timeoutHandler);
-        resolve(rargs);//JSON.parse(rargs));
+        resolve(rargs);
       });
       self.once(`${resultKey}-reject`, (rargs: any) => {
         clearTimeout(timeoutHandler);
-        reject(rargs);//JSON.parse(rargs));
+        reject(rargs);
       });
       if (
         !self.publishChannel.sendToQueue(
           queueKey,
-          args, //Buffer.from(JSON.stringify(args)),
+          args, 
           {
             expiration: timeoutSeconds * 1000 + 5000,
             correlationId: resultKey,

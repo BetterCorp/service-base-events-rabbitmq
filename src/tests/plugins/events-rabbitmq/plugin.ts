@@ -58,7 +58,7 @@ const getPluginConfig = async () => {
   };
 };
 
-describe("plugins/events-default", () => {
+describe("plugins/events-rabbitmq", () => {
   emit(async () => {
     const refP = new events("test-plugin", process.cwd(), fakeLogger);
     (refP as any).getPluginConfig = getPluginConfig;

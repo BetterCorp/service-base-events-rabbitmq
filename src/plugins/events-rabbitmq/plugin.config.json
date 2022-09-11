@@ -2,5 +2,20 @@
   "key": "events-rabbitmq",
   "name": "RabbitMQ",
   "icon": "events-rabbitmq.png",
-  "description": "RabbitMQ events plugin"
+  "description": "RabbitMQ events plugin",
+  "badges": [
+    {
+      "url": "https://codecov.io/gh/BetterCorp/service-base-events-rabbitmq",
+      "img": "https://codecov.io/gh/BetterCorp/service-base-events-rabbitmq/branch/master/graph/badge.svg"
+    },
+    {
+      "img": "https://img.shields.io/github/license/BetterCorp/service-base-events-rabbitmq"
+    },
+    {
+      "img": "https://img.shields.io/snyk/vulnerabilities/github/BetterCorp/service-base-events-rabbitmq"
+    },
+    {
+      "img": "https://img.shields.io/github/issues-raw/BetterCorp/service-base-events-rabbitmq"
+    }
+  ]
 }

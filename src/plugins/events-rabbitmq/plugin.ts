@@ -73,9 +73,6 @@ export class Events extends EventsBase<PluginConfig> {
         self.log.fatal("AMQP Error: Connection closed");
     });
 
-    //await this.receiveConnection.connect();
-    //await this.publishConnection.connect();
-
     this.log.info(`Connected to {endpoints}x2? (s:{sendS}/p:{pubS})`, {
       endpoints: (await this.getPluginConfig()).endpoints,
       sendS: this.receiveConnection.isConnected(),

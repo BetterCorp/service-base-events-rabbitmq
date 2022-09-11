@@ -79,8 +79,6 @@ export class emitStreamAndReceiveStream extends EventEmitter {
                   { myEARQueueKey: self.myEventsQueueKey }
                 );
               try {
-                //let body = msg.content.toString();
-                //let body = msg.content.toJSON();
                 let body = JSON.parse(msg.content.toString());
                 self.uSelf.log.debug(
                   `[RECEVIED Event {myEARQueueKey}] ({correlationId})`,
@@ -89,13 +87,8 @@ export class emitStreamAndReceiveStream extends EventEmitter {
                     correlationId: msg.properties.correlationId,
                   }
                 );
-                // console.log(body)
-                //// console.log(JSON.parse(msg.content.toString()))
-                //// console.log(JSON.parse(Buffer.from(body.data).toString('utf8')))
-                //// console.log(body)
                 self.emit(
                   self.eventsChannelKey + msg.properties.correlationId,
-                  //JSON.parse(body)
                   body,
                   () => {
                     //ack
@@ -146,44 +139,20 @@ export class emitStreamAndReceiveStream extends EventEmitter {
           await iChannel.consume(
             self.myStreamQueueKey,
             (msg: amqplibCore.ConsumeMessage | null): any => {
-              //// console.log("received stream", msg);
               if (msg === null)
                 return self.uSelf.log.warn(
                   `[RECEVIED {myEARQueueKey}]... as null`,
                   { myEARQueueKey: self.myStreamQueueKey }
                 );
               try {
-                //let body = msg.content.toString();
                 let body = JSON.parse(msg.content.toString());
                 self.uSelf.log.debug(`[RECEVIED Stream {myEARQueueKey}]`, {
                   myEARQueueKey: self.myStreamQueueKey,
                 });
 
-                //if (body.type !== "data") {
-                //  self.emit(
-                //    self.eventsChannelKey + "r-" + msg.properties.correlationId,
-                //    //JSON.parse(body)
-                //    body,
-                //    () => {
-                //      //ack
-                //      iChannel.ack(msg);
-                //    },
-                //    () => {
-                //      //nack
-                //      iChannel.nack(msg);
-                //    }
-                //  );
-                //  //iChannel.ack(msg);
-                //  return;
-                //}
-                //let data = JSON.parse(msg.content.toString());
                 self.emit(
                   self.streamChannelKey + "r-" + msg.properties.correlationId,
-                  //JSON.parse(body)
-                  //msg.content.toJSON()
                   body,
-                  //msg.content
-                  //body.data,
                   () => {
                     //ack
                     iChannel.ack(msg);
@@ -193,7 +162,6 @@ export class emitStreamAndReceiveStream extends EventEmitter {
                     iChannel.nack(msg);
                   }
                 );
-                //iChannel.ack(msg);
               } catch (exc: any) {
                 self.uSelf.log.fatal("AMPQ Consumed exception: {eMsg}", {
                   eMsg: exc.message || exc.toString(),
@@ -220,8 +188,6 @@ export class emitStreamAndReceiveStream extends EventEmitter {
   ): Promise<string> {
     const streamId = `${randomUUID()}-${new Date().getTime()}`;
     let thisTimeoutMS = this.staticCommsTimeout;
-    //const streamReturnRefId = this.myStreamQueueKey + "-" + streamId;
-    //const streamEventsRefId = this.myEventsQueueKey + "-" + streamId;
     this.uSelf.log.debug(`SR: {callerPluginName} listening to {streamId}`, {
       callerPluginName,
       streamId,
@@ -230,7 +196,6 @@ export class emitStreamAndReceiveStream extends EventEmitter {
     let dstEventsQueueKey: string;
     return new Promise(async (resolve) => {
       await self.setupChannelsIfNotSetup();
-      //await self.streamChannel.removeSetup(thisQueueSetup);
       let stream: Readable | null = null;
       let lastResponseTimeoutHandler: NodeJS.Timeout | null = null;
       let lastResponseTimeoutCount: number = 1;
@@ -264,14 +229,11 @@ export class emitStreamAndReceiveStream extends EventEmitter {
         if (
           !(await self.eventsChannel.sendToQueue(
             dstEventsQueueKey,
-            /*Buffer.from(
-              JSON.stringify(*/
             {
               type: "timeout",
               data: err,
             },
-            /*)
-            )*/ {
+            {
               expiration: self.queueOpts.messageTtl,
               correlationId: "s-" + streamId,
               appId: self.uSelf.myId,
@@ -296,12 +258,6 @@ export class emitStreamAndReceiveStream extends EventEmitter {
         if (
           !(await self.eventsChannel.sendToQueue(
             dstEventsQueueKey,
-            /*Buffer.from(
-              JSON.stringify({
-                type: "timeout",
-                data: err,
-              })
-            ),*/
             {
               type: "timeout",
               data: err,
@@ -334,9 +290,7 @@ export class emitStreamAndReceiveStream extends EventEmitter {
         if (
           !(await self.eventsChannel.sendToQueue(
             dstEventsQueueKey,
-            /*Buffer.from(
-              JSON.stringify(*/ { type: "receipt", timeout: thisTimeoutMS } /*)
-            )*/,
+            { type: "receipt", timeout: thisTimeoutMS },
             {
               expiration: self.queueOpts.messageTtl,
               correlationId: "s-" + streamId,
@@ -353,7 +307,7 @@ export class emitStreamAndReceiveStream extends EventEmitter {
               if (
                 !(await self.eventsChannel.sendToQueue(
                   dstEventsQueueKey,
-                  /*Buffer.from(JSON.stringify(*/ { type: "read" } /*))*/,
+                  { type: "read" },
                   {
                     expiration: self.queueOpts.messageTtl,
                     correlationId: "s-" + streamId,
@@ -372,17 +326,9 @@ export class emitStreamAndReceiveStream extends EventEmitter {
           let eventsToListenTo = ["error", "end"];
           for (let evnt of eventsToListenTo)
             stream.on(evnt, async (e: any, b: any) => {
-              // console.log("StreamR event:" + evnt);
               if (
                 !(await self.eventsChannel.sendToQueue(
                   dstEventsQueueKey,
-                  /*Buffer.from(
-                    JSON.stringify({
-                      type: "event",
-                      event: evnt,
-                      data: e || null,
-                    })
-                  ),*/
                   {
                     type: "event",
                     event: evnt,
@@ -399,22 +345,9 @@ export class emitStreamAndReceiveStream extends EventEmitter {
                 throw `Cannot send msg to queue [${dstEventsQueueKey}] ${streamId}`;
               }
               if (evnt === "end") {
-                // console.log('received END')
                 await cleanup();
               }
-              //if (b === "RECEIVED") return;
             });
-          /*self.on(
-            self.eventsChannelKey + streamId+'-event',
-            async (data: any) => {
-              if (data === null)
-                return self.uSelf.log.debug(
-                  `[R RECEVIED {streamId}]... as null`,
-                  { streamId }
-                );
-              stream!.emit(data.event, data.data || null, "RECEIVED");
-            }
-          );*/
           self.on(
             self.streamChannelKey + "r-" + streamId,
             async (data: any, ack: { (): void }, nack: { (): void }) => {
@@ -425,16 +358,13 @@ export class emitStreamAndReceiveStream extends EventEmitter {
                   { streamId }
                 );
               }
-              // console.log("STREAMR EMIT: " + data.type);
               if (
                 !(await self.eventsChannel.sendToQueue(
                   dstEventsQueueKey,
-                  /*Buffer.from(
-                    JSON.stringify(*/ {
+                  {
                     type: "receipt",
                     timeout: thisTimeoutMS,
-                  } /*)
-                  )*/,
+                  },
                   {
                     expiration: self.queueOpts.messageTtl,
                     correlationId: "s-" + streamId,
@@ -445,14 +375,9 @@ export class emitStreamAndReceiveStream extends EventEmitter {
               )
                 throw `Cannot send msg to queue [${dstEventsQueueKey}] ${streamId}`;
               if (data.type === "event") {
-                /* console.log(`streamEventsRefId Received: {type}=>{event}`, {
-                  type: data.type,
-                  event: data.event,
-                });*/
                 stream!.emit(
                   data.event,
                   data.data !== undefined ? data.data : null
-                  //"RECEIVED"
                 );
                 ack();
                 return;
@@ -463,40 +388,8 @@ export class emitStreamAndReceiveStream extends EventEmitter {
                 return;
               }
               nack();
-              /*if (
-                !(await self.eventsChannel.sendToQueue(
-                  dstEventsQueueKey,
-                  { type: "read" },
-                  {
-                    expiration: self.queueOpts.messageTtl,
-                    correlationId: "s-" + streamId,
-                    appId: self.uSelf.myId,
-                    timestamp: new Date().getTime(),
-                  }
-                ))
-              )
-                throw `Cannot send msg to queue [${dstEventsQueueKey}] ${streamId}`;*/
             }
           );
-          /*await self.streamChannel.consume(
-            streamRefId,
-            async (sMsg: amqplibCore.ConsumeMessage | null): Promise<any> => {
-              if (sMsg === null)
-                return self.uSelf.log.debug(
-                  `[R RECEVIED {streamRefId}]... as null`,
-                  { streamRefId }
-                );
-              if (sMsg.properties.correlationId === "event") {
-                let data = JSON.parse(sMsg.content.toString());
-                stream!.emit(data.event, data.data || null, "RECEIVED");
-                self.streamChannel.ack(sMsg);
-                return;
-              }
-              stream!.push(sMsg.content);
-              self.streamChannel.ack(sMsg);
-            },
-            { noAck: false }
-          );*/
           listener(null, stream)
             .then(async () => {
               self.uSelf.log.info("stream OK");
@@ -513,9 +406,6 @@ export class emitStreamAndReceiveStream extends EventEmitter {
       self.on(
         self.eventsChannelKey + "r-" + streamId,
         async (data: any, ack: { (): void }, nack: { (): void }) => {
-          /* console.log(`streamEventsRefId Received: {type}`, {
-            type: data.type,
-          });*/
           if (receiptTimeoutHandler !== null) {
             clearTimeout(receiptTimeoutHandler);
             receiptTimeoutHandler = null;
@@ -526,28 +416,12 @@ export class emitStreamAndReceiveStream extends EventEmitter {
               `[R RECEVIED {streamEventsRefId}]... as null`,
               { streamEventsRefId: dstEventsQueueKey }
             );
-          //let dataAS = baseMsg.content.toString();
-          //let data = JSON.parse(dataAS);
-          //console.debug(`streamEventsRefId Received: {dataAS}`, { dataAS });
           if (data.type === "timeout") {
             await cleanup();
             listener(data.data, null!);
             ack();
             return;
           }
-          /*if (data.type === "event") {
-            // console.log(`streamEventsRefId Received: {type}=>{event}`, {
-              type: data.type,
-              event: data.event,
-            });
-            stream!.emit(
-              data.event,
-              data.data !== undefined ? data.data : null,
-              "RECEIVED"
-            );
-            ack();
-            return;
-          }*/
           if (data.type === "start") {
             self.uSelf.log.debug("Readying to stream from: {fromId}", {
               fromId: data.myId,
@@ -593,7 +467,6 @@ export class emitStreamAndReceiveStream extends EventEmitter {
     );
     return new Promise(async (resolveI, rejectI) => {
       await self.setupChannelsIfNotSetup();
-      //await self.receiveChannel.assertQueue(streamReturnRefId, self.queueOpts);
       let lastResponseTimeoutHandler: NodeJS.Timeout | null = null;
       let lastResponseTimeoutCount: number = 1;
       let receiptTimeoutHandler: NodeJS.Timeout | null = setTimeout(() => {
@@ -609,7 +482,6 @@ export class emitStreamAndReceiveStream extends EventEmitter {
           clearTimeout(lastResponseTimeoutHandler);
         receiptTimeoutHandler = null;
         lastResponseTimeoutHandler = null;
-        //await self.receiveChannel.deleteQueue(streamReturnRefId);
       };
       const reject = async (e: Error) => {
         await cleanup("reject-" + e.message, e);
@@ -637,12 +509,10 @@ export class emitStreamAndReceiveStream extends EventEmitter {
             if (
               !(await self.eventsChannel.sendToQueue(
                 dstEventsQueueKey,
-                /*Buffer.from(
-                  JSON.stringify(*/ {
+                {
                   type: "timeout",
                   data: err,
-                } /*)
-                )*/,
+                },
                 {
                   expiration: self.queueOpts.messageTtl,
                   correlationId: "r-" + streamId,
@@ -660,22 +530,14 @@ export class emitStreamAndReceiveStream extends EventEmitter {
           createTimeout();
         }
       };
-      //let eventsToListenTo = ["error", "close", "end"];
       let eventsToListenTo: Array<string> = ["error", "end"];
-      //let eventsToListenTo = ["error"];
       for (let evnt of eventsToListenTo) {
         stream.on(
           evnt,
           async (e: any, b: any, ack: { (): void }, nack: { (): void }) => {
-            // console.log("stream emitted: ", evnt);
-            //await cleanup(evnt);
-            //if (b === "RECEIVED") return ack();
             if (
               !(await self.streamChannel.sendToQueue(
                 dstStreamQueueKey,
-                //Buffer.from(
-                //  JSON.stringify({ type: "event", event: evnt, data: e || null })
-                //),
                 { type: "event", event: evnt, data: e || null },
                 {
                   expiration: self.queueOpts.messageTtl,
@@ -690,33 +552,9 @@ export class emitStreamAndReceiveStream extends EventEmitter {
             }
             ack();
             if (evnt === "error") reject(e);
-            //if (evnt === "close" || evnt === "end") resolve();
           }
         );
       }
-      /*stream.on("error", async (e: any, b: any) => {
-        // console.log("stream emitted: ", "error");
-        await cleanup("error");
-        if (b === "RECEIVED") return;
-        if (
-          !(await self.eventsChannel.sendToQueue(
-            dstEventsQueueKey,
-            //Buffer.from(
-            //  JSON.stringify({ type: "event", event: evnt, data: e || null })
-            //),
-            { type: "event", event: "error", data: e || null },
-            {
-              expiration: self.queueOpts.messageTtl,
-              correlationId: "r-" + streamId,
-              appId: self.uSelf.myId,
-              timestamp: new Date().getTime(),
-            }
-          ))
-        ) {
-          throw `Cannot send msg to queue [${dstEventsQueueKey}] ${streamId}`;
-        }
-        reject(e);
-      });*/
       let pushingData = false;
       let streamStarted = false;
       const pushData = () => {
@@ -729,15 +567,13 @@ export class emitStreamAndReceiveStream extends EventEmitter {
         pushingData = true;
         self.uSelf.log.warn("Switching to push data model.");
         stream.on("data", async (data: any) => {
-          // console.log("stream receive on data event");
           if (
             !(await self.streamChannel.sendToQueue(
               dstStreamQueueKey,
               { type: "data", data },
-              //data,
               {
                 expiration: self.queueOpts.messageTtl,
-                correlationId: /*"r-" + */ streamId,
+                correlationId: streamId,
                 appId: self.uSelf.myId,
                 timestamp: new Date().getTime(),
               }
@@ -749,13 +585,11 @@ export class emitStreamAndReceiveStream extends EventEmitter {
               { dstStreamQueueKey, streamId }
             );
           }
-          // console.log(" - stream receive on data event: sent");
         });
       };
       self.on(
         self.eventsChannelKey + "s-" + streamId,
         async (data: any, ack: { (): void }, nack: { (): void }) => {
-          // console.log("received events msg:", data, "pushing?:" + pushingData);
           if (receiptTimeoutHandler !== null) {
             clearTimeout(receiptTimeoutHandler);
             receiptTimeoutHandler = null;
@@ -768,8 +602,6 @@ export class emitStreamAndReceiveStream extends EventEmitter {
               { dstEventsQueueKey }
             );
           }
-          //let data = JSON.parse(baseMsg.content.toString());
-          //self.receiveChannel.ack(baseMsg);
           if (data.type === "timeout") {
             await reject(new Error("timeout-receiver"));
             return ack();
@@ -799,10 +631,9 @@ export class emitStreamAndReceiveStream extends EventEmitter {
               !(await self.streamChannel.sendToQueue(
                 dstStreamQueueKey,
                 { type: "data", data: readData },
-                //readData,
                 {
                   expiration: self.queueOpts.messageTtl,
-                  correlationId: /*"r-" + */ streamId,
+                  correlationId: streamId,
                   appId: self.uSelf.myId,
                   timestamp: new Date().getTime(),
                 }
@@ -824,7 +655,7 @@ export class emitStreamAndReceiveStream extends EventEmitter {
       if (
         !(await self.eventsChannel.sendToQueue(
           dstEventsQueueKey,
-          { type: "start", myId: self.uSelf.myId }, //Buffer.from(JSON.stringify({ type: "start" })),
+          { type: "start", myId: self.uSelf.myId },
           {
             expiration: self.queueOpts.messageTtl,
             correlationId: "r-" + streamId,
