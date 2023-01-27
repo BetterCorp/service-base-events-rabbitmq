@@ -52,7 +52,10 @@ export class Events extends EventsBase<PluginConfig> {
     this.publishConnection.on(
       "connectFailed",
       async (data: any): Promise<any> => {
-        if (pluginConfig.fatalOnDisconnect || pluginConfig.endpoints.length === 1)
+        if (
+          pluginConfig.fatalOnDisconnect ||
+          pluginConfig.endpoints.length === 1
+        )
           return await self.log.fatal("AMQP CONNECT FAIL: {url} ({msg})", {
             url: data.url,
             msg: data.err.toString(),
@@ -110,7 +113,7 @@ export class Events extends EventsBase<PluginConfig> {
     this.receiveConnection.close();
   }
 
-  public async onEvent(
+  public override async onEvent(
     callerPluginName: string,
     pluginName: string,
     event: string,

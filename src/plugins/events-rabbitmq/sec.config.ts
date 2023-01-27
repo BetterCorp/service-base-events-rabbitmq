@@ -30,13 +30,21 @@ export class Config extends SecConfig<PluginConfig> {
     mappedPluginName: string,
     existingConfig: PluginConfig
   ): PluginConfig {
+    const existAsAny = existingConfig as any;
+    if (Tools.isObject(existAsAny) && Tools.isString(existAsAny.endpoint)) {
+      existingConfig.endpoints = [(existingConfig as any).endpoint as string];
+    }
     let resultConfig: PluginConfig = {
-      fatalOnDisconnect: existingConfig.fatalOnDisconnect || true,
-      prefetch: existingConfig.prefetch || 10,
-      endpoints: ((existingConfig as any).endpoint !== undefined
-        ? [(existingConfig as any).endpoint]
-        : existingConfig.endpoints) || ["amqp://localhost"],
-      credentials: existingConfig.credentials || {},
+      fatalOnDisconnect: Tools.isBoolean(existingConfig.fatalOnDisconnect)
+        ? existingConfig.fatalOnDisconnect
+        : true,
+      prefetch: Tools.isNumber(existingConfig.prefetch)
+        ? existingConfig.prefetch
+        : 10,
+      endpoints: Tools.isArray(existingConfig.endpoints)
+        ? existingConfig.endpoints
+        : ["amqp://localhost"],
+      credentials: existingConfig.credentials ?? {},
       uniqueId: existingConfig.uniqueId,
     };
 
@@ -50,9 +58,9 @@ export class Config extends SecConfig<PluginConfig> {
       resultConfig.fatalOnDisconnect = true;
     }
     resultConfig.credentials.username =
-      (resultConfig.credentials || {}).username || "guest";
+      (resultConfig.credentials ?? {}).username || "guest";
     resultConfig.credentials.password =
-      (resultConfig.credentials || {}).password || "guest";
+      (resultConfig.credentials ?? {}).password || "guest";
     return resultConfig;
   }
 }
