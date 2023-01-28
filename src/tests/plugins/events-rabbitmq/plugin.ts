@@ -12,6 +12,7 @@ import { readFileSync } from 'fs';
 const debug = (...a: any) => {};
 const fakeLogger: IPluginLogger = {
   reportStat: async (key, value): Promise<void> => {},
+  reportTextStat: async (key, value): Promise<void> => {},
   info: async (message, meta, hasPIData): Promise<void> => {
     debug(message, meta);
   },
@@ -49,19 +50,19 @@ const getPluginConfig = async () => {
 
 describe("plugins/events-rabbitmq", () => {
   emit(async () => {
-    const refP = new events("test-plugin", process.cwd(), fakeLogger);
+    const refP = new events("test-plugin", process.cwd(), process.cwd(), fakeLogger);
     (refP as any).getPluginConfig = getPluginConfig;
     if (refP.init !== undefined) await refP.init();
     return refP;
   }, 50);
   emitAndReturn(async () => {
-    const refP = new events("test-plugin", process.cwd(), fakeLogger);
+    const refP = new events("test-plugin", process.cwd(), process.cwd(), fakeLogger);
     (refP as any).getPluginConfig = getPluginConfig;
     if (refP.init !== undefined) await refP.init();
     return refP;
   }, 50);
   emitStreamAndReceiveStream(async () => {
-    const refP = new events("test-plugin", process.cwd(), fakeLogger);
+    const refP = new events("test-plugin", process.cwd(), process.cwd(), fakeLogger);
     (refP as any).getPluginConfig = getPluginConfig;
     if (refP.init !== undefined) await refP.init();
     //refP.eas.staticCommsTimeout = 25;
