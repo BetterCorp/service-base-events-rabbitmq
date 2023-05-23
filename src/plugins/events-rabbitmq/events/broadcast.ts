@@ -22,8 +22,8 @@ export class broadcast {
   private readonly queueOpts: amqplib.Options.AssertQueue = {
     durable: false,
     autoDelete: true,
-    messageTtl: 60 * 1000, // 60 seconds
-    expires: 60 * 1000, // 60s
+    messageTtl: 60 * 60 * 1000, // 60 min
+    expires: 60 * 60 * 1000, // 60 min
   };
   async init(uSelf: Events) {
     this.uSelf = uSelf;
