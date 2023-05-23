@@ -12,8 +12,8 @@ export class emit {
   private readonly queueOpts: amqplib.Options.AssertQueue = {
     durable: false,
     autoDelete: true,
-    messageTtl: 60 * 1000, // 60 seconds
-    expires: 60 * 1000, // 60s
+    messageTtl: 60 * 60 * 1000, // 60 min
+    expires: 60 * 60 * 1000, // 60 min
   };
   async init(uSelf: Events) {
     this.uSelf = uSelf;
@@ -80,7 +80,9 @@ export class emit {
               let end = new Date().getTime();
               let time = end - start;
               await self.uSelf.log.reportStat(
-                `eventsrec-${self.channelKey}-${pluginName || callerPluginName}-${event}-ok`,
+                `eventsrec-${self.channelKey}-${
+                  pluginName || callerPluginName
+                }-${event}-ok`,
                 time
               );
             } catch (err: any) {
@@ -88,7 +90,9 @@ export class emit {
               let end = new Date().getTime();
               let time = end - start;
               await self.uSelf.log.reportStat(
-                `eventsrec-${self.channelKey}-${pluginName || callerPluginName}-${event}-error`,
+                `eventsrec-${self.channelKey}-${
+                  pluginName || callerPluginName
+                }-${event}-error`,
                 time
               );
               await self.uSelf.log.error(err);
