@@ -68,7 +68,7 @@ jobs:
       - run: sed -i 's/127.0.0.1:5670/127.0.0.1:${{ steps.availablePort.outputs.AVAILABLE_PORT }}/' ./events-rabbitmq-plugin-config.json
       - run: echo "rabbit running on port ${{ steps.availablePort.outputs.AVAILABLE_PORT }}"
       - run: npm run build
-      - run: docker run -td -p ${{ steps.availablePort.outputs.AVAILABLE_PORT }}:5672 --name "MASTERRABBITMQBSBTEST${{ matrix.node-version }}" -e RABBITMQ_DEFAULT_USER=guest -e RABBITMQ_DEFAULT_PASS=guest rabbitmq:3-management
+      - run: docker run -td -p 127.0.0.1:${{ steps.availablePort.outputs.AVAILABLE_PORT }}:5672 --name "MASTERRABBITMQBSBTEST${{ matrix.node-version }}" -e RABBITMQ_DEFAULT_USER=guest -e RABBITMQ_DEFAULT_PASS=guest rabbitmq:3-management
       - name: List running containers
         run: docker ps
       - name: Wait for healthchecks
