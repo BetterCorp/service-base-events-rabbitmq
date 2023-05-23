@@ -70,7 +70,7 @@ jobs:
       - run: npm run build
       - run: docker run -td -p ${{ steps.availablePort.outputs.AVAILABLE_PORT }}:5672 --name "MASTERRABBITMQBSBTEST${{ matrix.node-version }}" -e RABBITMQ_DEFAULT_USER=guest -e RABBITMQ_DEFAULT_PASS=guest rabbitmq:3-management
       - name: Wait for healthchecks
-        run: timeout 60s sh -c 'until docker ps | grep MASTERRABBITMQBSBTEST${{ matrix.node-version }} | grep -q healthy; do echo "Waiting for container to be healthy... $(until docker ps | grep MASTERRABBITMQBSBTEST${{ matrix.node-version }})"; sleep 2; done'
+        run: timeout 60s sh -c 'until docker ps | grep MASTERRABBITMQBSBTEST${{ matrix.node-version }} | grep -q healthy; do (until docker ps | grep "MASTERRABBITMQBSBTEST${{ matrix.node-version }}"); sleep 2; done'
       - run: npm run test
       - run: git restore ./events-rabbitmq-plugin-config.json
 
