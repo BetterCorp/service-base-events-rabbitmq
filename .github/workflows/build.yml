@@ -38,7 +38,7 @@ jobs:
       - run: npm ci
       - run: npm run build
       - run: docker pull rabbitmq:3-management
-      - run: docker run -td -p ${{ steps.availablePort.outputs.AVAILABLE_PORT }}:5670 --name "BUILDRABBITMQBSBTEST${{ matrix.node-version }}" -e RABBITMQ_DEFAULT_USER=guest -e RABBITMQ_DEFAULT_PASS=guest rabbitmq:3-management
+      - run: docker run -td -p ${{ steps.availablePort.outputs.AVAILABLE_PORT }}:5672 --name "BUILDRABBITMQBSBTEST${{ matrix.node-version }}" -e RABBITMQ_DEFAULT_USER=guest -e RABBITMQ_DEFAULT_PASS=guest rabbitmq:3-management
       - run: docker ps
       - run: echo "$(docker ps -aqf 'name=BUILDRABBITMQBSBTEST${{ matrix.node-version }}')"
       - run: (docker logs -f "$(docker ps -aqf 'name=BUILDRABBITMQBSBTEST${{ matrix.node-version }}')" & ) | grep -q "Ready to start client connection listeners"
