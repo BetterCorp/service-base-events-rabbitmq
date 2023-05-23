@@ -14,6 +14,7 @@ export enum DataType {
 }
 
 export interface PluginConfig {
+  platformKey: string | null; // If you want to run multiple bsb platforms on a single rabbitmq
   fatalOnDisconnect: boolean; // Disconnect on error: Cause the bsb service to exit code 1 if the connection drops
   prefetch: number; // Prefetch: The RabbitMQ Prefetch amount
   endpoints: Array<string>; // Endpoints: The list of servers(cluster) to connect too
@@ -38,6 +39,9 @@ export class Config extends SecConfig<PluginConfig> {
       fatalOnDisconnect: Tools.isBoolean(existingConfig.fatalOnDisconnect)
         ? existingConfig.fatalOnDisconnect
         : true,
+      platformKey: Tools.isString(existingConfig.platformKey)
+        ? existingConfig.platformKey
+        : null,
       prefetch: Tools.isNumber(existingConfig.prefetch)
         ? existingConfig.prefetch
         : 10,

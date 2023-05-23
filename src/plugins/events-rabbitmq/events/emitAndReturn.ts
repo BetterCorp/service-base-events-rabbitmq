@@ -3,42 +3,34 @@ import * as amqplib from "amqp-connection-manager";
 import * as amqplibCore from "amqplib";
 import { EventEmitter } from "events";
 import { randomUUID } from "crypto";
-import { LIB } from "./lib";
+import { LIB, SetupChannel } from "./lib";
 
 export class emitAndReturn extends EventEmitter {
   private uSelf!: Events;
   private privateQueuesSetup: Array<string> = [];
-  private publishChannel!: amqplib.ChannelWrapper;
-  private receiveChannel!: amqplib.ChannelWrapper;
-  private readonly channelKey = "8ar";
-  private readonly myChannelKey = "8kr";
-  private readonly exchange: any = {
-    type: "direct",
-    name: "better-service8-ear",
-  };
-  private readonly exchangeOpts: amqplib.Options.AssertExchange = {
-    durable: false,
-    //exclusive: true,
-    autoDelete: true,
-  };
+  private publishChannel!: SetupChannel;
+  private receiveChannel!: SetupChannel;
+  private readonly channelKey = "81ar";
+  private readonly myChannelKey = "81kr";
   private readonly queueOpts: amqplib.Options.AssertQueue = {
     durable: false,
     autoDelete: true,
     messageTtl: 60 * 1000, // 60 seconds
-    expires: 60000, // 60s
+    expires: 60 * 1000, // 60s
   };
   private readonly myQueueOpts: amqplib.Options.AssertQueue = {
     exclusive: true,
     durable: false,
     autoDelete: true,
     messageTtl: 60 * 1000, // 60 seconds
-    expires: 60000, // 60s
+    expires: 60 * 1000, // 60s
   };
 
   async init(uSelf: Events) {
     this.uSelf = uSelf;
     const self = this;
-    const myEARQueueKey = LIB.getSpecialQueueKey(
+    const myEARQueueKey = await LIB.getMyQueueKey(
+      uSelf,
       this.myChannelKey,
       this.uSelf.myId
     );
@@ -50,20 +42,18 @@ export class emitAndReturn extends EventEmitter {
       uSelf,
       uSelf.publishConnection,
       this.myChannelKey,
-      this.exchange.name,
-      this.exchange.type,
-      this.exchangeOpts
+      null
     );
     this.receiveChannel = await LIB.setupChannel(
       uSelf,
       uSelf.receiveConnection,
       this.myChannelKey,
-      this.exchange.name,
-      this.exchange.type,
-      this.exchangeOpts,
+      null,
+      undefined,
+      undefined,
       2
     );
-    await this.receiveChannel.addSetup(
+    await this.receiveChannel.channel.addSetup(
       async (iChannel: amqplibCore.ConfirmChannel) => {
         await iChannel.assertQueue(myEARQueueKey, self.myQueueOpts);
         self.uSelf.log.debug(`LISTEN: [{myEARQueueKey}]`, { myEARQueueKey });
@@ -98,8 +88,8 @@ export class emitAndReturn extends EventEmitter {
     );
   }
   public dispose() {
-    this.publishChannel.close();
-    this.receiveChannel.close();
+    this.publishChannel.channel.close();
+    this.receiveChannel.channel.close();
   }
 
   async onReturnableEvent(
@@ -109,7 +99,8 @@ export class emitAndReturn extends EventEmitter {
     listener: { (args: Array<any>): Promise<any> }
   ): Promise<void> {
     const self = this;
-    const queueKey = LIB.getQueueKey(
+    const queueKey = await LIB.getQueueKey(
+      self.uSelf,
       this.channelKey,
       callerPluginName,
       pluginName,
@@ -120,17 +111,19 @@ export class emitAndReturn extends EventEmitter {
       queueKey,
     });
 
-    await self.receiveChannel.addSetup(
+    await self.receiveChannel.channel.addSetup(
       async (iChannel: amqplibCore.ConfirmChannel) => {
         await iChannel.assertQueue(queueKey, self.queueOpts);
         await iChannel.consume(
           queueKey,
           async (msg: amqplibCore.ConsumeMessage | null): Promise<any> => {
+            let start = new Date().getTime();
             if (msg === null)
               return self.uSelf.log.error(
                 "Message received on my EAR queue was null..."
               );
-            const returnQueue = LIB.getSpecialQueueKey(
+            const returnQueue = await LIB.getMyQueueKey(
+              self.uSelf,
               this.myChannelKey,
               msg.properties.appId
             );
@@ -141,14 +134,14 @@ export class emitAndReturn extends EventEmitter {
             let body = msg.content.toString();
             const bodyObj = JSON.parse(body) as Array<any>;
             try {
-              const response = (await listener(bodyObj));
+              const response = await listener(bodyObj);
               iChannel.ack(msg);
               self.uSelf.log.debug(
                 `EAR: {callerPluginName} OKAY: {queueKey} -> {returnQueue}`,
                 { callerPluginName, queueKey, returnQueue }
               );
               if (
-                !self.publishChannel.sendToQueue(
+                !self.publishChannel.channel.sendToQueue(
                   returnQueue,
                   response,
                   {
@@ -161,6 +154,14 @@ export class emitAndReturn extends EventEmitter {
                 )
               )
                 throw `Cannot send msg to queue [${returnQueue}]`;
+              let end = new Date().getTime();
+              let time = end - start;
+              await self.uSelf.log.reportStat(
+                `eventsrec-${self.channelKey}-${
+                  pluginName || callerPluginName
+                }-${event}-ok`,
+                time
+              );
             } catch (exc) {
               iChannel.ack(msg);
               self.uSelf.log.error(
@@ -168,19 +169,23 @@ export class emitAndReturn extends EventEmitter {
                 { callerPluginName, queueKey, returnQueue }
               );
               if (
-                !self.publishChannel.sendToQueue(
-                  returnQueue,
-                  exc,
-                  {
-                    expiration: 5000,
-                    correlationId: `${msg.properties.correlationId}-reject`,
-                    contentType: "string",
-                    appId: self.uSelf.myId,
-                    timestamp: new Date().getTime(),
-                  }
-                )
+                !self.publishChannel.channel.sendToQueue(returnQueue, exc, {
+                  expiration: 5000,
+                  correlationId: `${msg.properties.correlationId}-reject`,
+                  contentType: "string",
+                  appId: self.uSelf.myId,
+                  timestamp: new Date().getTime(),
+                })
               )
                 throw `Cannot send msg to queue [${returnQueue}]`;
+              let end = new Date().getTime();
+              let time = end - start;
+              await self.uSelf.log.reportStat(
+                `eventsrec-${self.channelKey}-${
+                  pluginName || callerPluginName
+                }-${event}-error`,
+                time
+              );
             }
           },
           { noAck: false }
@@ -201,8 +206,10 @@ export class emitAndReturn extends EventEmitter {
     args: Array<any>
   ): Promise<any> {
     const self = this;
+    let start = new Date().getTime();
     const resultKey = `${randomUUID()}-${new Date().getTime()}${Math.random()}`;
-    const queueKey = LIB.getQueueKey(
+    const queueKey = await LIB.getQueueKey(
+      self.uSelf,
       this.channelKey,
       callerPluginName,
       pluginName,
@@ -214,38 +221,58 @@ export class emitAndReturn extends EventEmitter {
     );
     if (self.privateQueuesSetup.indexOf(queueKey) < 0) {
       self.privateQueuesSetup.push(queueKey);
-      await self.publishChannel.addSetup(
+      await self.publishChannel.channel.addSetup(
         async (iChannel: amqplibCore.ConfirmChannel) => {
           await iChannel.assertQueue(queueKey, self.queueOpts);
         }
       );
     }
     return await new Promise(async (resolve, reject) => {
-      let timeoutHandler = setTimeout(() => {
+      let timeoutHandler = setTimeout(async () => {
         self.removeAllListeners(`${resultKey}-resolve`);
         self.removeAllListeners(`${resultKey}-reject`);
+        let end = new Date().getTime();
+        let time = end - start;
+        await self.uSelf.log.reportStat(
+          `eventssen-${self.channelKey}-${
+            pluginName || callerPluginName
+          }-${event}-error`,
+          time
+        );
         reject("Timeout");
       }, timeoutSeconds * 1000);
-      self.once(`${resultKey}-resolve`, (rargs: string) => {
+      self.once(`${resultKey}-resolve`, async (rargs: string) => {
         clearTimeout(timeoutHandler);
+        let end = new Date().getTime();
+        let time = end - start;
+        await self.uSelf.log.reportStat(
+          `eventssen-${self.channelKey}-${
+            pluginName || callerPluginName
+          }-${event}-ok`,
+          time
+        );
         resolve(rargs);
       });
-      self.once(`${resultKey}-reject`, (rargs: any) => {
+      self.once(`${resultKey}-reject`, async (rargs: any) => {
         clearTimeout(timeoutHandler);
+        let end = new Date().getTime();
+        let time = end - start;
+        await self.uSelf.log.reportStat(
+          `eventssen-${self.channelKey}-${
+            pluginName || callerPluginName
+          }-${event}-error`,
+          time
+        );
         reject(rargs);
       });
       if (
-        !self.publishChannel.sendToQueue(
-          queueKey,
-          args, 
-          {
-            expiration: timeoutSeconds * 1000 + 5000,
-            correlationId: resultKey,
-            contentType: "string",
-            appId: self.uSelf.myId,
-            timestamp: new Date().getTime(),
-          }
-        )
+        !self.publishChannel.channel.sendToQueue(queueKey, args, {
+          expiration: timeoutSeconds * 1000 + 5000,
+          correlationId: resultKey,
+          contentType: "string",
+          appId: self.uSelf.myId,
+          timestamp: new Date().getTime(),
+        })
       )
         throw `Cannot send msg to queue [${queueKey}]`;
       self.uSelf.log.debug(

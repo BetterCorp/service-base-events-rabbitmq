@@ -3,47 +3,55 @@ import * as amqplib from "amqp-connection-manager";
 import * as amqplibCore from "amqplib";
 import { Events } from "../plugin";
 
+export interface SetupChannel<T extends string | null = string | null> {
+  exchangeName: T;
+  channel: amqplib.ChannelWrapper;
+}
 export class LIB {
-  public static getQueueKey(
+  public static async getQueueKey(
+    uSelf: Events,
     channelKey: string,
     callerPluginName: string,
     pluginName: string | null,
     event: string,
     addKey?: string
   ) {
-    return `${channelKey}-${pluginName || callerPluginName}-${event}${
-      Tools.isNullOrUndefined(addKey) ? "" : `-${addKey}`
-    }`;
+    return `${await uSelf.getPlatformName(channelKey)}-${
+      pluginName || callerPluginName
+    }-${event}${Tools.isNullOrUndefined(addKey) ? "" : `-${addKey}`}`;
   }
-  public static getLocalKey(channelKey: string, event: string) {
-    return `${channelKey}-${event}`;
-  }
-  public static getSpecialQueueKey(
+  public static async getMyQueueKey(
+    uSelf: Events,
     channelKey: string,
     id: string,
     addKey?: string
   ) {
-    return `${channelKey}-${id}${
+    return `${await uSelf.getPlatformName(channelKey)}-${id}${
       Tools.isNullOrUndefined(addKey) ? "" : `-${addKey}`
     }`;
   }
-  public static async setupChannel(
+  public static async setupChannel<T extends string | null>(
     uSelf: Events,
     connection: amqplib.AmqpConnectionManager,
     queueKey: string,
-    exName: string,
-    exType: string,
-    exOpts: amqplib.Options.AssertExchange,
+    exchangeName: T,
+    exType?: string,
+    exOpts?: amqplib.Options.AssertExchange,
     prefetch?: number,
     json: boolean = true
-  ): Promise<amqplib.ChannelWrapper> {
+  ): Promise<SetupChannel<T>> {
     return new Promise(async (resolve) => {
+      const exName =
+        Tools.isNullOrUndefined(exchangeName) || Tools.isNullOrUndefined(exType)
+          ? null
+          : await uSelf.getPlatformName(exchangeName);
       let returned = false;
       uSelf.log.debug(`Create channel ({queueKey})`, { queueKey });
       const channel = await connection.createChannel({
         json,
         setup: async (ichannel: amqplibCore.ConfirmChannel) => {
-          await ichannel.assertExchange(exName, exType, exOpts);
+          if (exName !== null)
+            await ichannel.assertExchange(exName, exType!, exOpts);
           if (!Tools.isNullOrUndefined(prefetch)) {
             uSelf.log.debug(`prefetch ({queueKey}) {prefetch}`, {
               queueKey,
@@ -55,7 +63,10 @@ export class LIB {
             queueKey,
           });
           if (!returned) {
-            resolve(channel);
+            resolve({
+              exchangeName: exName as T,
+              channel,
+            });
             returned = true;
           }
         },
@@ -69,11 +80,12 @@ export class LIB {
           err: err.message || err,
         });
       });
-      uSelf.log.debug(`Assert exchange ({queueKey}) {exName} {exType}`, {
-        queueKey,
-        exName,
-        exType,
-      });
+      if (exName !== null)
+        uSelf.log.debug(`Assert exchange ({queueKey}) {exName} {exType}`, {
+          queueKey,
+          exName,
+          exType: exType!,
+        });
       uSelf.log.debug(`Ready ({queueKey})`, { queueKey });
     });
   }

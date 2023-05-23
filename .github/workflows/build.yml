@@ -30,7 +30,7 @@ jobs:
       - name: availablePort
         id: availablePort
         run: echo "::set-output name=AVAILABLE_PORT::$(comm -23 <(seq 49152 65535) <(ss -tan | awk '{print $4}' | cut -d':' -f2 | grep "[0-9]\{1,5\}" | sort | uniq) | shuf | head -n 1)"
-      - run: sed -i 's/127.0.0.1:5672/127.0.0.1:${{ steps.availablePort.outputs.AVAILABLE_PORT }}/' ./events-rabbitmq-plugin-config.json
+      - run: sed -i 's/127.0.0.1:5670/127.0.0.1:${{ steps.availablePort.outputs.AVAILABLE_PORT }}/' ./events-rabbitmq-plugin-config.json
       - run: echo "rabbit running on port ${{ steps.availablePort.outputs.AVAILABLE_PORT }}"
         
       - run: npm i -g typescript ts-node

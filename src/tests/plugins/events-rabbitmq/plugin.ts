@@ -3,15 +3,18 @@ import assert from "assert";
 //import { Logger } from "./test-logger";
 import { Events as events } from "../../../plugins/events-rabbitmq/plugin";
 import { emit } from "@bettercorp/service-base/lib/tests/plugins/events/events/emit";
+import { broadcast } from "@bettercorp/service-base/lib/tests/plugins/events/events/broadcast";
 import { emitAndReturn } from "@bettercorp/service-base/lib/tests/plugins/events/events/emitAndReturn";
 import { emitStreamAndReceiveStream } from "@bettercorp/service-base/lib/tests/plugins/events/events/emitStreamAndReceiveStream";
-import { readFileSync } from 'fs';
+import { readFileSync } from "fs";
 
 //const fakeCLogger = new Logger("test-plugin", process.cwd(), {} as any);
 //const debug = console.log;
 const debug = (...a: any) => {};
 const fakeLogger: IPluginLogger = {
-  reportStat: async (key, value): Promise<void> => {},
+  reportStat: async (key, value): Promise<void> => {
+    console.warn("reportStat:" + key + "=" + value);
+  },
   reportTextStat: async (key, value): Promise<void> => {},
   info: async (message, meta, hasPIData): Promise<void> => {
     debug(message, meta);
@@ -36,7 +39,7 @@ const fakeLogger: IPluginLogger = {
     meta?: LogMeta<any>,
     hasPIData?: boolean
   ): Promise<void> => {
-    console.error('FATAL', messageOrError, meta);
+    console.error("FATAL", messageOrError, meta);
     process.exit(2);
   },
   debug: async (message, meta, hasPIData): Promise<void> => {
@@ -45,25 +48,73 @@ const fakeLogger: IPluginLogger = {
 };
 
 const getPluginConfig = async () => {
-  return JSON.parse(readFileSync('./events-rabbitmq-plugin-config.json').toString());
+  return JSON.parse(
+    readFileSync("./events-rabbitmq-plugin-config.json").toString()
+  );
 };
 
 describe("plugins/events-rabbitmq", () => {
-  emit(async () => {
-    const refP = new events("test-plugin", process.cwd(), process.cwd(), fakeLogger);
+  broadcast(async () => {
+    const refP = new events(
+      "test-plugin",
+      process.cwd(),
+      process.cwd(),
+      fakeLogger
+    );
     (refP as any).getPluginConfig = getPluginConfig;
+    (refP as any).getPlatformName = async (name: string): Promise<string> => {
+      const pluginConfig = await getPluginConfig();
+      if (pluginConfig.platformKey === null) return name;
+      return `${name}-${pluginConfig.platformKey}`;
+    };
+    if (refP.init !== undefined) await refP.init();
+    return refP;
+  }, 50);
+  emit(async () => {
+    const refP = new events(
+      "test-plugin",
+      process.cwd(),
+      process.cwd(),
+      fakeLogger
+    );
+    (refP as any).getPluginConfig = getPluginConfig;
+    (refP as any).getPlatformName = async (name: string): Promise<string> => {
+      const pluginConfig = await getPluginConfig();
+      if (pluginConfig.platformKey === null) return name;
+      return `${name}-${pluginConfig.platformKey}`;
+    };
     if (refP.init !== undefined) await refP.init();
     return refP;
   }, 50);
   emitAndReturn(async () => {
-    const refP = new events("test-plugin", process.cwd(), process.cwd(), fakeLogger);
+    const refP = new events(
+      "test-plugin",
+      process.cwd(),
+      process.cwd(),
+      fakeLogger
+    );
     (refP as any).getPluginConfig = getPluginConfig;
+    (refP as any).getPlatformName = async (name: string): Promise<string> => {
+      const pluginConfig = await getPluginConfig();
+      if (pluginConfig.platformKey === null) return name;
+      return `${name}-${pluginConfig.platformKey}`;
+    };
     if (refP.init !== undefined) await refP.init();
     return refP;
   }, 50);
   emitStreamAndReceiveStream(async () => {
-    const refP = new events("test-plugin", process.cwd(), process.cwd(), fakeLogger);
+    const refP = new events(
+      "test-plugin",
+      process.cwd(),
+      process.cwd(),
+      fakeLogger
+    );
     (refP as any).getPluginConfig = getPluginConfig;
+    (refP as any).getPlatformName = async (name: string): Promise<string> => {
+      const pluginConfig = await getPluginConfig();
+      if (pluginConfig.platformKey === null) return name;
+      return `${name}-${pluginConfig.platformKey}`;
+    };
     if (refP.init !== undefined) await refP.init();
     //refP.eas.staticCommsTimeout = 25;
     return refP;
