@@ -3,7 +3,10 @@ import * as amqplib from "amqp-connection-manager";
 import * as amqplibCore from "amqplib";
 import { LIB, SetupChannel } from "./lib";
 import { randomUUID } from "crypto";
-import { IPluginLogger, SmartFunctionCallAsync } from "@bettercorp/service-base";
+import {
+  IPluginLogger,
+  SmartFunctionCallAsync,
+} from "@bettercorp/service-base";
 
 export class broadcast {
   private plugin: Plugin;
@@ -83,47 +86,41 @@ export class broadcast {
       thisQueueKey: rawQueueKey,
     });
 
-    const self = this;
     await this.receiveChannel.channel.addSetup(
       async (iChannel: amqplibCore.ConfirmChannel) => {
-        await iChannel.assertQueue(thisQueueKey, self.queueOpts);
-        await self.receiveChannel.channel.consume(
+        await iChannel.assertQueue(thisQueueKey, this.queueOpts);
+        await this.receiveChannel.channel.consume(
           thisQueueKey,
           async (msg: amqplibCore.ConsumeMessage) => {
-            let start = new Date().getTime();
-            let body = msg.content.toString();
+            const start = Date.now();
+            const body = msg.content.toString();
             const bodyObj = JSON.parse(body) as Array<any>;
             try {
-              await SmartFunctionCallAsync(self.plugin, listener, bodyObj);
-              self.receiveChannel.channel.ack(msg);
-              let end = new Date().getTime();
-              let time = end - start;
-              self.log.reportStat(
-                `eventsrec-${self.channelKey}-${pluginName}-${event}-ok`,
+              await SmartFunctionCallAsync(this.plugin, listener, bodyObj);
+              this.receiveChannel.channel.ack(msg);
+              const time = Date.now() - start;
+              this.log.reportStat(
+                `eventsrec-${this.channelKey}-${pluginName}-${event}-ok`,
                 time
               );
             } catch (err: any) {
-              self.receiveChannel.channel.nack(msg, true);
-              let end = new Date().getTime();
-              let time = end - start;
-              self.log.reportStat(
-                `eventsrec-${self.channelKey}-${pluginName}-${event}-error`,
+              this.receiveChannel.channel.nack(msg, true);
+              const time = Date.now() - start;
+              this.log.reportStat(
+                `eventsrec-${this.channelKey}-${pluginName}-${event}-error`,
                 time
               );
-              self.log.error(err.toString(), {});
+              this.log.error(err.toString(), {});
             }
           },
           { noAck: false }
         );
         await iChannel.bindQueue(
           thisQueueKey,
-          self.receiveChannel.exchangeName,
+          this.receiveChannel.exchangeName,
           rawQueueKey
-          /*{
-            routing_key: rawQueueKey,
-          }*/
         );
-        self.log.debug(`listen rabbit: [{thisQueueKey}]`, {
+        this.log.debug(`listen rabbit: [{thisQueueKey}]`, {
           thisQueueKey: rawQueueKey,
         });
       }
@@ -144,16 +141,17 @@ export class broadcast {
     this.log.debug(`Emit: [{thisQueueKey}]`, {
       thisQueueKey,
     });
-    if (this.publishQueuesSetup.indexOf(thisQueueKey) < 0) {
-      const self = this;
+
+    if (!this.publishQueuesSetup.includes(thisQueueKey)) {
       this.publishQueuesSetup.push(thisQueueKey);
       await this.publishChannel.channel.addSetup(
         async (iChannel: amqplibCore.ConfirmChannel) => {
-          await iChannel.assertQueue(thisQueueKey, self.queueOpts);
-          self.log.debug(`emit rabbit: [{thisQueueKey}]`, { thisQueueKey });
+          await iChannel.assertQueue(thisQueueKey, this.queueOpts);
+          this.log.debug(`emit rabbit: [{thisQueueKey}]`, { thisQueueKey });
         }
       );
     }
+
     if (
       !this.publishChannel.channel.publish(
         this.exchange.name,
@@ -163,7 +161,7 @@ export class broadcast {
           expiration: this.queueOpts.messageTtl,
           contentType: "string",
           appId: this.plugin.myId,
-          timestamp: new Date().getTime(),
+          timestamp: Date.now(),
         }
       )
     )

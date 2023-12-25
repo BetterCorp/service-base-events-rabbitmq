@@ -6,9 +6,7 @@ const randomName = () => randomUUID();
 
 export function emitAndReturn(
   genNewPlugin: { (): Promise<BSBEvents> },
-  maxTimeoutToExpectAResponse: number,
-  a = true,
-  b = true
+  maxTimeoutToExpectAResponse: number
 ) {
   let emitter: BSBEvents;
   beforeEach(async () => {
@@ -237,7 +235,7 @@ export function emitAndReturn(
         },
       },
     ];
-    for (let typeToTest of typesToTest) {
+    for (const typeToTest of typesToTest) {
       describe(`emitEventAndReturn ${typeToTest.name}`, async () => {
         it("should be able to emit to events with plugin name defined", async () => {
           const thisPlugin = randomName();

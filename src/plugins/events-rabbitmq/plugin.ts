@@ -45,7 +45,7 @@ export class Plugin extends BSBEvents<Config> {
     this.log.info(`Connect to {endpoints}`, {
       endpoints: this.config.endpoints,
     });
-    let socketOptions: amqplib.AmqpConnectionManagerOptions = {
+    const socketOptions: amqplib.AmqpConnectionManagerOptions = {
       connectionOptions: {},
     };
     if (!Tools.isNullOrUndefined(this.config.credentials)) {

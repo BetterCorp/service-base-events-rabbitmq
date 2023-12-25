@@ -17,7 +17,7 @@ const newSBLogging = () => {
     process.cwd(),
     {} as any
   );
-  for (let logger of (sbLogging as any).loggers) {
+  for (const logger of (sbLogging as any).loggers) {
     SmartFunctionCallSync(logger, logger.dispose);
   }
   (sbLogging as any).loggers = [];

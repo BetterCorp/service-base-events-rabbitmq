@@ -215,7 +215,7 @@ export function emit(
         },
       },
     ];
-    for (let typeToTest of typesToTest)
+    for (const typeToTest of typesToTest)
       describe(`emitEvent ${typeToTest.name}`, async () => {
         it("should be able to emit to events with plugin name defined", async () => {
           const thisPlugin = randomName();

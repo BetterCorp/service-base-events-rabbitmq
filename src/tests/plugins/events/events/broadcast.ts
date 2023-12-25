@@ -215,7 +215,7 @@ export function broadcast(
         },
       },
     ];
-    for (let typeToTest of typesToTest)
+    for (const typeToTest of typesToTest)
       describe(`emitBroadcast ${typeToTest.name}`, async () => {
         it("should be able to emit to events with plugin name defined", async () => {
           const thisPlugin = randomName();

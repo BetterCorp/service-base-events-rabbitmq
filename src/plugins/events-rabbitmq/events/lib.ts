@@ -41,6 +41,7 @@ export class LIB {
     prefetch?: number,
     json: boolean = true
   ): Promise<SetupChannel<T>> {
+    // eslint-disable-next-line no-async-promise-executor
     return new Promise(async (resolve) => {
       const exName =
         Tools.isNullOrUndefined(exchangeName) || Tools.isNullOrUndefined(exType)
