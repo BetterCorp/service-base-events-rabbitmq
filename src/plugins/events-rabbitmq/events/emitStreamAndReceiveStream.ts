@@ -1,18 +1,20 @@
 import { EventEmitter, Readable } from "stream";
 import { randomUUID } from "crypto";
-import { Events } from "../plugin";
+import { Plugin } from "../plugin";
 import * as amqplib from "amqp-connection-manager";
 import * as amqplibCore from "amqplib";
 import { LIB, SetupChannel } from "./lib";
+import { IPluginLogger } from "@bettercorp/service-base";
 
 export class emitStreamAndReceiveStream extends EventEmitter {
   // If we try receive or send a stream and the other party is not ready for some reason, we will automatically timeout in 5s.
   private readonly staticCommsTimeout = 30000; //1000;
-  private uSelf!: Events;
+  private plugin: Plugin;
+  private log: IPluginLogger;
   private eventsChannel!: SetupChannel;
   private streamChannel!: SetupChannel;
-  private readonly eventsChannelKey = "81se";
-  private readonly streamChannelKey = "81sd";
+  private readonly eventsChannelKey = "91se";
+  private readonly streamChannelKey = "91sd";
   private readonly queueOpts: amqplib.Options.AssertQueue = {
     durable: false,
     autoDelete: true,
@@ -20,18 +22,18 @@ export class emitStreamAndReceiveStream extends EventEmitter {
     expires: 60 * 1000, // 60s
   };
 
-  private async myEventsQueueKey() {
-    return await LIB.getMyQueueKey(
-      this.uSelf,
+  private myEventsQueueKey() {
+    return LIB.getMyQueueKey(
+      this.plugin,
       this.eventsChannelKey,
-      this.uSelf.myId
+      this.plugin.myId
     );
   }
-  private async myStreamQueueKey() {
-    return await LIB.getMyQueueKey(
-      this.uSelf,
+  private myStreamQueueKey() {
+    return LIB.getMyQueueKey(
+      this.plugin,
       this.streamChannelKey,
-      this.uSelf.myId
+      this.plugin.myId
     );
   }
 
@@ -40,8 +42,10 @@ export class emitStreamAndReceiveStream extends EventEmitter {
     this.removeAllListeners(this.streamChannelKey + key + streamId);
   }
 
-  async init(uSelf: Events) {
-    this.uSelf = uSelf;
+  constructor(plugin: Plugin, log: IPluginLogger) {
+    super();
+    this.plugin = plugin;
+    this.log = log;
   }
   public dispose() {
     this.removeAllListeners();
@@ -50,38 +54,38 @@ export class emitStreamAndReceiveStream extends EventEmitter {
   }
 
   async setupChannelsIfNotSetup() {
-    const self = this;
     if (this.eventsChannel === undefined) {
-      const myEventsQueueKey = await this.myEventsQueueKey();
+      const myEventsQueueKey = this.myEventsQueueKey();
       this.eventsChannel = await LIB.setupChannel(
-        this.uSelf,
-        this.uSelf.receiveConnection,
+        this.plugin,
+        this.log,
+        this.plugin.receiveConnection,
         this.eventsChannelKey,
         null,
         undefined,
         undefined,
         2
       );
-      await this.uSelf.log.debug(`Ready my events name: {myEARQueueKey}`, {
+      this.log.debug(`Ready my events name: {myEARQueueKey}`, {
         myEARQueueKey: myEventsQueueKey,
       });
+      const self = this;
       await this.eventsChannel.channel.addSetup(
         async (iChannel: amqplibCore.ConfirmChannel) => {
           await iChannel.assertQueue(myEventsQueueKey, self.queueOpts);
-          await self.uSelf.log.debug(`LISTEN: [{myEARQueueKey}]`, {
+          self.log.debug(`LISTEN: [{myEARQueueKey}]`, {
             myEARQueueKey: myEventsQueueKey,
           });
           await iChannel.consume(
             myEventsQueueKey,
             async (msg: amqplibCore.ConsumeMessage | null): Promise<any> => {
               if (msg === null)
-                return await self.uSelf.log.warn(
-                  `[RECEVIED {myEARQueueKey}]... as null`,
-                  { myEARQueueKey: myEventsQueueKey }
-                );
+                return self.log.warn(`[RECEVIED {myEARQueueKey}]... as null`, {
+                  myEARQueueKey: myEventsQueueKey,
+                });
               try {
                 let body = JSON.parse(msg.content.toString());
-                await self.uSelf.log.debug(
+                self.log.debug(
                   `[RECEVIED Event {myEARQueueKey}] ({correlationId})`,
                   {
                     myEARQueueKey: myEventsQueueKey,
@@ -101,30 +105,29 @@ export class emitStreamAndReceiveStream extends EventEmitter {
                   }
                 );
               } catch (exc: any) {
-                await self.uSelf.log.fatal("AMPQ Consumed exception: {eMsg}", {
+                self.log.error("AMPQ Consumed exception: {eMsg}", {
                   eMsg: exc.message || exc.toString(),
                 });
+                process.exit(7);
               }
             },
             { noAck: false }
           );
-          await self.uSelf.log.debug(`LISTEN: [{myEARQueueKey}]`, {
+          self.log.debug(`LISTEN: [{myEARQueueKey}]`, {
             myEARQueueKey: myEventsQueueKey,
           });
-          await self.uSelf.log.debug(
-            `Ready my events name: {myEARQueueKey} OKAY`,
-            {
-              myEARQueueKey: myEventsQueueKey,
-            }
-          );
+          self.log.debug(`Ready my events name: {myEARQueueKey} OKAY`, {
+            myEARQueueKey: myEventsQueueKey,
+          });
         }
       );
     }
     if (this.streamChannel === undefined) {
-      const myStreamQueueKey = await this.myStreamQueueKey();
+      const myStreamQueueKey = this.myStreamQueueKey();
       this.streamChannel = await LIB.setupChannel(
-        this.uSelf,
-        this.uSelf.receiveConnection,
+        this.plugin,
+        this.log,
+        this.plugin.receiveConnection,
         this.streamChannelKey,
         null,
         undefined,
@@ -132,31 +135,28 @@ export class emitStreamAndReceiveStream extends EventEmitter {
         2
         //,false
       );
-      await this.uSelf.log.debug(`Ready my stream name: {myEARQueueKey}`, {
+      this.log.debug(`Ready my stream name: {myEARQueueKey}`, {
         myEARQueueKey: myStreamQueueKey,
       });
+      const self = this;
       await this.streamChannel.channel.addSetup(
         async (iChannel: amqplibCore.ConfirmChannel) => {
           await iChannel.assertQueue(myStreamQueueKey, self.queueOpts);
-          await self.uSelf.log.debug(`LISTEN: [{myEARQueueKey}]`, {
+          self.log.debug(`LISTEN: [{myEARQueueKey}]`, {
             myEARQueueKey: myStreamQueueKey,
           });
           await iChannel.consume(
             myStreamQueueKey,
             async (msg: amqplibCore.ConsumeMessage | null): Promise<any> => {
               if (msg === null)
-                return await self.uSelf.log.warn(
-                  `[RECEVIED {myEARQueueKey}]... as null`,
-                  { myEARQueueKey: myStreamQueueKey }
-                );
+                return self.log.warn(`[RECEVIED {myEARQueueKey}]... as null`, {
+                  myEARQueueKey: myStreamQueueKey,
+                });
               try {
                 let body = JSON.parse(msg.content.toString());
-                await self.uSelf.log.debug(
-                  `[RECEVIED Stream {myEARQueueKey}]`,
-                  {
-                    myEARQueueKey: myStreamQueueKey,
-                  }
-                );
+                self.log.debug(`[RECEVIED Stream {myEARQueueKey}]`, {
+                  myEARQueueKey: myStreamQueueKey,
+                });
 
                 self.emit(
                   self.streamChannelKey + "r-" + msg.properties.correlationId,
@@ -171,42 +171,35 @@ export class emitStreamAndReceiveStream extends EventEmitter {
                   }
                 );
               } catch (exc: any) {
-                await self.uSelf.log.fatal("AMPQ Consumed exception: {eMsg}", {
+                self.log.error("AMPQ Consumed exception: {eMsg}", {
                   eMsg: exc.message || exc.toString(),
                 });
+                process.exit(7);
               }
             },
             { noAck: false }
           );
-          await self.uSelf.log.debug(`LISTEN: [{myEARQueueKey}]`, {
+          self.log.debug(`LISTEN: [{myEARQueueKey}]`, {
             myEARQueueKey: myStreamQueueKey,
           });
-          await self.uSelf.log.debug(
-            `Ready my stream name: {myEARQueueKey} OKAY`,
-            {
-              myEARQueueKey: myStreamQueueKey,
-            }
-          );
+          self.log.debug(`Ready my stream name: {myEARQueueKey} OKAY`, {
+            myEARQueueKey: myStreamQueueKey,
+          });
         }
       );
     }
   }
 
   async receiveStream(
-    callerPluginName: string,
     listener: { (error: Error | null, stream: Readable): Promise<void> },
     timeoutSeconds = 5
   ): Promise<string> {
     let start = new Date().getTime();
     const streamId = `${randomUUID()}-${new Date().getTime()}`;
     let thisTimeoutMS = this.staticCommsTimeout;
-    await this.uSelf.log.debug(
-      `SR: {callerPluginName} listening to {streamId}`,
-      {
-        callerPluginName,
-        streamId,
-      }
-    );
+    this.log.debug(`SR: listening to {streamId}`, {
+      streamId,
+    });
     const self = this;
     let dstEventsQueueKey: string;
     return new Promise(async (resolve) => {
@@ -221,9 +214,9 @@ export class emitStreamAndReceiveStream extends EventEmitter {
       const cleanup = async () => {
         self.cleanupSelf(streamId, "r-");
         createTimeout = async (e) => {
-          await self.uSelf.log.debug("voided timeout creator: {e}", { e });
+          self.log.debug("voided timeout creator: {e}", { e });
         };
-        await self.uSelf.log.debug("Cleanup stuffR");
+        self.log.debug("Cleanup stuffR");
         if (receiptTimeoutHandler !== null) {
           clearTimeout(receiptTimeoutHandler);
         }
@@ -238,7 +231,7 @@ export class emitStreamAndReceiveStream extends EventEmitter {
         }
       };
       receiptTimeoutHandler = setTimeout(async () => {
-        await self.uSelf.log.debug("Receive Receipt Timeout");
+        self.log.debug("Receive Receipt Timeout");
         const err = new Error("Receive Receipt Timeout");
         await cleanup();
         if (
@@ -251,7 +244,7 @@ export class emitStreamAndReceiveStream extends EventEmitter {
             {
               expiration: self.queueOpts.messageTtl,
               correlationId: "s-" + streamId,
-              appId: self.uSelf.myId,
+              appId: self.plugin.myId,
               timestamp: new Date().getTime(),
             }
           ))
@@ -268,7 +261,7 @@ export class emitStreamAndReceiveStream extends EventEmitter {
           return;
         }
         const err = new Error("Receive Active Timeout");
-        await self.uSelf.log.error("Receive Active Timeout");
+        self.log.error("Receive Active Timeout");
         await cleanup();
         if (
           !(await self.eventsChannel.channel.sendToQueue(
@@ -280,7 +273,7 @@ export class emitStreamAndReceiveStream extends EventEmitter {
             {
               expiration: self.queueOpts.messageTtl,
               correlationId: "s-" + streamId,
-              appId: self.uSelf.myId,
+              appId: self.plugin.myId,
               timestamp: new Date().getTime(),
             }
           ))
@@ -300,7 +293,7 @@ export class emitStreamAndReceiveStream extends EventEmitter {
         createTimeout("updateLastResponseTimer");
       };
       const startStream = async () => {
-        await self.uSelf.log.debug("START STREAM RECEIVER");
+        self.log.debug("START STREAM RECEIVER");
         thisTimeoutMS = timeoutSeconds * 1000;
         if (
           !(await self.eventsChannel.channel.sendToQueue(
@@ -309,7 +302,7 @@ export class emitStreamAndReceiveStream extends EventEmitter {
             {
               expiration: self.queueOpts.messageTtl,
               correlationId: "s-" + streamId,
-              appId: self.uSelf.myId,
+              appId: self.plugin.myId,
               timestamp: new Date().getTime(),
             }
           ))
@@ -326,7 +319,7 @@ export class emitStreamAndReceiveStream extends EventEmitter {
                   {
                     expiration: self.queueOpts.messageTtl,
                     correlationId: "s-" + streamId,
-                    appId: self.uSelf.myId,
+                    appId: self.plugin.myId,
                     timestamp: new Date().getTime(),
                   }
                 ))
@@ -334,7 +327,7 @@ export class emitStreamAndReceiveStream extends EventEmitter {
                 throw `Cannot send msg to queue [${dstEventsQueueKey}] ${streamId}`;
             },
           });
-          await self.uSelf.log.debug(`[R RECEVIED {streamRefId}] {streamId}`, {
+          self.log.debug(`[R RECEVIED {streamRefId}] {streamId}`, {
             streamRefId: dstEventsQueueKey,
             streamId,
           });
@@ -352,7 +345,7 @@ export class emitStreamAndReceiveStream extends EventEmitter {
                   {
                     expiration: self.queueOpts.messageTtl,
                     correlationId: "s-" + streamId,
-                    appId: self.uSelf.myId,
+                    appId: self.plugin.myId,
                     timestamp: new Date().getTime(),
                   }
                 ))
@@ -368,10 +361,9 @@ export class emitStreamAndReceiveStream extends EventEmitter {
             async (data: any, ack: { (): void }, nack: { (): void }) => {
               if (data === null) {
                 nack();
-                return await self.uSelf.log.debug(
-                  `[R RECEVIED {streamId}]... as null`,
-                  { streamId }
-                );
+                return self.log.debug(`[R RECEVIED {streamId}]... as null`, {
+                  streamId,
+                });
               }
               if (
                 !(await self.eventsChannel.channel.sendToQueue(
@@ -383,7 +375,7 @@ export class emitStreamAndReceiveStream extends EventEmitter {
                   {
                     expiration: self.queueOpts.messageTtl,
                     correlationId: "s-" + streamId,
-                    appId: self.uSelf.myId,
+                    appId: self.plugin.myId,
                     timestamp: new Date().getTime(),
                   }
                 ))
@@ -407,19 +399,21 @@ export class emitStreamAndReceiveStream extends EventEmitter {
           );
           listener(null, stream)
             .then(async () => {
-              await self.uSelf.log.info("stream OK");
+              self.log.info("stream OK");
             })
             .catch(async (x: Error) => {
               await cleanup();
-              await self.uSelf.log.fatal("Stream NOT OK: {e}", {
+              self.log.error("Stream NOT OK: {e}", {
                 e: x.message,
               });
+              process.exit(7);
             });
         } catch (exc: any) {
           await cleanup();
-          await self.uSelf.log.fatal("Stream NOT OK: {e}", {
+          self.log.error("Stream NOT OK: {e}", {
             e: exc.message || exc,
           });
+          process.exit(7);
         }
       };
       self.on(
@@ -431,7 +425,7 @@ export class emitStreamAndReceiveStream extends EventEmitter {
           }
           updateLastResponseTimer();
           if (data === null)
-            return await self.uSelf.log.debug(
+            return self.log.debug(
               `[R RECEVIED {streamEventsRefId}]... as null`,
               { streamEventsRefId: dstEventsQueueKey }
             );
@@ -442,16 +436,16 @@ export class emitStreamAndReceiveStream extends EventEmitter {
             return;
           }
           if (data.type === "start") {
-            await self.uSelf.log.debug("Readying to stream from: {fromId}", {
+            self.log.debug("Readying to stream from: {fromId}", {
               fromId: data.myId,
             });
-            dstEventsQueueKey = await LIB.getMyQueueKey(
-              self.uSelf,
+            dstEventsQueueKey = LIB.getMyQueueKey(
+              self.plugin,
               this.eventsChannelKey,
               data.myId
             );
             await startStream();
-            await self.uSelf.log.debug("Starting to stream");
+            self.log.debug("Starting to stream");
             ack();
             return;
           }
@@ -460,40 +454,36 @@ export class emitStreamAndReceiveStream extends EventEmitter {
       );
       let end = new Date().getTime();
       let time = end - start;
-      await self.uSelf.log.reportStat(
-        `streamrev-${self.streamChannelKey}-${callerPluginName}-${dstEventsQueueKey}-ok`,
+      self.log.reportStat(
+        `streamrev-${self.streamChannelKey}-${dstEventsQueueKey}-ok`,
         time
       );
-      resolve(`${this.uSelf.myId}||${streamId}||${timeoutSeconds}`);
+      resolve(`${this.plugin.myId}||${streamId}||${timeoutSeconds}`);
     });
   }
 
-  async sendStream(
-    callerPluginName: string,
-    streamIdf: string,
-    stream: Readable
-  ): Promise<void> {
+  async sendStream(streamIdf: string, stream: Readable): Promise<void> {
     let start = new Date().getTime();
     if (streamIdf.split("||").length !== 3) throw "invalid stream ID";
     let streamReceiverId = streamIdf.split("||")[0];
     let streamId = streamIdf.split("||")[1];
     let streamTimeoutS = Number.parseInt(streamIdf.split("||")[2]);
     let thisTimeoutMS = this.staticCommsTimeout;
-    const dstEventsQueueKey = await LIB.getMyQueueKey(
-      this.uSelf,
+    const dstEventsQueueKey = LIB.getMyQueueKey(
+      this.plugin,
       this.eventsChannelKey,
       streamReceiverId
     );
-    const dstStreamQueueKey = await LIB.getMyQueueKey(
-      this.uSelf,
+    const dstStreamQueueKey = LIB.getMyQueueKey(
+      this.plugin,
       this.streamChannelKey,
       streamReceiverId
     );
     const self = this;
-    await this.uSelf.log.info(
-      `SS: {callerPluginName} emitting to {dstEventsQueueKey}/{dstStreamQueueKey}`,
-      { callerPluginName, dstEventsQueueKey, dstStreamQueueKey }
-    );
+    this.log.info(`SS: emitting to {dstEventsQueueKey}/{dstStreamQueueKey}`, {
+      dstEventsQueueKey,
+      dstStreamQueueKey,
+    });
     return new Promise(async (resolveI, rejectI) => {
       await self.setupChannelsIfNotSetup();
       let lastResponseTimeoutHandler: NodeJS.Timeout | null = null;
@@ -502,7 +492,7 @@ export class emitStreamAndReceiveStream extends EventEmitter {
         reject(new Error("Send Receipt Timeout"));
       }, thisTimeoutMS);
       const cleanup = async (eType: string, e?: Error) => {
-        await self.uSelf.log.debug("cleanup: {eType}", { eType });
+        self.log.debug("cleanup: {eType}", { eType });
         self.cleanupSelf(streamId, "s-");
         stream.destroy(e);
 
@@ -516,8 +506,8 @@ export class emitStreamAndReceiveStream extends EventEmitter {
         await cleanup("reject-" + e.message, e);
         let end = new Date().getTime();
         let time = end - start;
-        await self.uSelf.log.reportStat(
-          `streamsen-${self.streamChannelKey}-${callerPluginName}-${streamReceiverId}-error`,
+        self.log.reportStat(
+          `streamsen-${self.streamChannelKey}-${streamReceiverId}-error`,
           time
         );
         rejectI(e);
@@ -526,8 +516,8 @@ export class emitStreamAndReceiveStream extends EventEmitter {
         await cleanup("resolved");
         let end = new Date().getTime();
         let time = end - start;
-        await self.uSelf.log.reportStat(
-          `streamsen-${self.streamChannelKey}-${callerPluginName}-${streamReceiverId}-ok`,
+        self.log.reportStat(
+          `streamsen-${self.streamChannelKey}-${streamReceiverId}-ok`,
           time
         );
         resolveI();
@@ -544,7 +534,7 @@ export class emitStreamAndReceiveStream extends EventEmitter {
               createTimeout();
               return;
             }
-            await self.uSelf.log.debug("Receive Receipt Timeout");
+            self.log.debug("Receive Receipt Timeout");
             const err = new Error("Receive Active Timeout");
             await cleanup("active-timeout");
             if (
@@ -557,7 +547,7 @@ export class emitStreamAndReceiveStream extends EventEmitter {
                 {
                   expiration: self.queueOpts.messageTtl,
                   correlationId: "r-" + streamId,
-                  appId: self.uSelf.myId,
+                  appId: self.plugin.myId,
                   timestamp: new Date().getTime(),
                 }
               ))
@@ -583,7 +573,7 @@ export class emitStreamAndReceiveStream extends EventEmitter {
                 {
                   expiration: self.queueOpts.messageTtl,
                   correlationId: /*"r-" + */ streamId,
-                  appId: self.uSelf.myId,
+                  appId: self.plugin.myId,
                   timestamp: new Date().getTime(),
                 }
               ))
@@ -600,13 +590,13 @@ export class emitStreamAndReceiveStream extends EventEmitter {
       let streamStarted = false;
       const pushData = async () => {
         if (pushingData) {
-          await self.uSelf.log.warn(
+          self.log.warn(
             "Stream tried pushing data, but not ready to push data!"
           );
           return;
         }
         pushingData = true;
-        await self.uSelf.log.warn("Switching to push data model.");
+        self.log.warn("Switching to push data model.");
         stream.on("data", async (data: any) => {
           if (
             !(await self.streamChannel.channel.sendToQueue(
@@ -615,13 +605,13 @@ export class emitStreamAndReceiveStream extends EventEmitter {
               {
                 expiration: self.queueOpts.messageTtl,
                 correlationId: streamId,
-                appId: self.uSelf.myId,
+                appId: self.plugin.myId,
                 timestamp: new Date().getTime(),
               }
             ))
           ) {
             pushingData = false;
-            await self.uSelf.log.error(
+            self.log.error(
               `Cannot push msg to queue [{dstStreamQueueKey}] {streamId} / switch back to poll model.`,
               { dstStreamQueueKey, streamId }
             );
@@ -638,7 +628,7 @@ export class emitStreamAndReceiveStream extends EventEmitter {
           updateLastResponseTimer();
           if (data === null) {
             nack();
-            return await self.uSelf.log.debug(
+            return self.log.debug(
               `[S RECEVIED {dstEventsQueueKey}]... as null`,
               { dstEventsQueueKey }
             );
@@ -663,7 +653,7 @@ export class emitStreamAndReceiveStream extends EventEmitter {
             if (pushingData) return ack();
             const readData = stream.read();
             if (!stream.readable || readData === null) {
-              await self.uSelf.log.info("Stream no longer readable.");
+              self.log.info("Stream no longer readable.");
               if (!streamStarted) await pushData();
               return ack();
             }
@@ -675,7 +665,7 @@ export class emitStreamAndReceiveStream extends EventEmitter {
                 {
                   expiration: self.queueOpts.messageTtl,
                   correlationId: streamId,
-                  appId: self.uSelf.myId,
+                  appId: self.plugin.myId,
                   timestamp: new Date().getTime(),
                 }
               ))
@@ -689,27 +679,26 @@ export class emitStreamAndReceiveStream extends EventEmitter {
           ack();
         }
       );
-      await self.uSelf.log.info(
-        `SS: {callerPluginName} setup, ready {streamEventsRefId}`,
-        { callerPluginName, streamEventsRefId: dstEventsQueueKey }
-      );
+      self.log.info(`SS: setup, ready {streamEventsRefId}`, {
+        streamEventsRefId: dstEventsQueueKey,
+      });
       if (
         !(await self.eventsChannel.channel.sendToQueue(
           dstEventsQueueKey,
-          { type: "start", myId: self.uSelf.myId },
+          { type: "start", myId: self.plugin.myId },
           {
             expiration: self.queueOpts.messageTtl,
             correlationId: "r-" + streamId,
-            appId: self.uSelf.myId,
+            appId: self.plugin.myId,
             timestamp: new Date().getTime(),
           }
         ))
       )
         throw `Cannot send msg to queue [${dstEventsQueueKey}]`;
       thisTimeoutMS = streamTimeoutS * 1000;
-      await self.uSelf.log.info(
-        `SS: {callerPluginName} emitted {dstEventsQueueKey} with timeout of {thisTimeoutMS}`,
-        { callerPluginName, dstEventsQueueKey, thisTimeoutMS }
+      self.log.info(
+        `SS: emitted {dstEventsQueueKey} with timeout of {thisTimeoutMS}`,
+        { dstEventsQueueKey, thisTimeoutMS }
       );
     });
   }

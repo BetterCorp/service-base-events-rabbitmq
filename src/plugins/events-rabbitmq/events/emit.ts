@@ -1,34 +1,44 @@
-import { Events } from "../plugin";
+import { Plugin } from "../plugin";
 import * as amqplib from "amqp-connection-manager";
 import * as amqplibCore from "amqplib";
 import { LIB, SetupChannel } from "./lib";
+import {
+  IPluginLogger,
+  SmartFunctionCallAsync,
+} from "@bettercorp/service-base";
 
 export class emit {
-  private uSelf!: Events;
+  private plugin: Plugin;
+  private log: IPluginLogger;
   private publishQueuesSetup: Array<string> = [];
   private publishChannel!: SetupChannel<null>;
   private receiveChannel!: SetupChannel<null>;
-  private readonly channelKey = "81eq";
+  private readonly channelKey = "91eq";
   private readonly queueOpts: amqplib.Options.AssertQueue = {
     durable: false,
     autoDelete: true,
     messageTtl: 60 * 60 * 1000, // 60 min
     expires: 60 * 60 * 1000, // 60 min
   };
-  async init(uSelf: Events) {
-    this.uSelf = uSelf;
-    this.uSelf.log.debug(`Open broadcast channel ({channelKey})`, {
+  constructor(plugin: Plugin, log: IPluginLogger) {
+    this.plugin = plugin;
+    this.log = log;
+  }
+  async init() {
+    this.log.debug(`Open broadcast channel ({channelKey})`, {
       channelKey: this.channelKey,
     });
     this.publishChannel = await LIB.setupChannel(
-      uSelf,
-      uSelf.publishConnection,
+      this.plugin,
+      this.log,
+      this.plugin.publishConnection,
       this.channelKey,
       null
     );
     this.receiveChannel = await LIB.setupChannel(
-      uSelf,
-      uSelf.receiveConnection,
+      this.plugin,
+      this.log,
+      this.plugin.receiveConnection,
       this.channelKey,
       null,
       undefined,
@@ -42,30 +52,24 @@ export class emit {
   }
 
   async onEvent(
-    callerPluginName: string,
     pluginName: string,
     event: string,
     listener: { (args: Array<any>): Promise<void> }
   ): Promise<void> {
-    const self = this;
-    const thisQueueKey = await LIB.getQueueKey(
-      self.uSelf,
+    const thisQueueKey = LIB.getQueueKey(
+      this.plugin,
       this.channelKey,
-      callerPluginName,
       pluginName,
       event
     );
-    self.uSelf.log.debug(`{callerPluginName} - LISTEN: [{thisQueueKey}]`, {
-      callerPluginName,
+    this.log.debug(`LISTEN: [{thisQueueKey}]`, {
       thisQueueKey,
     });
 
-    await this.uSelf.log.debug(
-      `{callerPluginName} - listen: [{thisQueueKey}]`,
-      { callerPluginName, thisQueueKey }
-    );
+    this.log.debug(` listen: [{thisQueueKey}]`, { thisQueueKey });
 
-    await self.receiveChannel.channel.addSetup(
+    const self = this;
+    await this.receiveChannel.channel.addSetup(
       async (iChannel: amqplibCore.ConfirmChannel) => {
         await iChannel.assertQueue(thisQueueKey, self.queueOpts);
         await self.receiveChannel.channel.consume(
@@ -75,67 +79,56 @@ export class emit {
             let body = msg.content.toString();
             const bodyObj = JSON.parse(body) as Array<any>;
             try {
-              await listener(bodyObj);
+              await SmartFunctionCallAsync(self.plugin, listener, bodyObj);
               self.receiveChannel.channel.ack(msg);
               let end = new Date().getTime();
               let time = end - start;
-              await self.uSelf.log.reportStat(
-                `eventsrec-${self.channelKey}-${
-                  pluginName || callerPluginName
-                }-${event}-ok`,
+              self.log.reportStat(
+                `eventsrec-${self.channelKey}-${pluginName}-${event}-ok`,
                 time
               );
             } catch (err: any) {
               self.receiveChannel.channel.nack(msg, true);
               let end = new Date().getTime();
               let time = end - start;
-              await self.uSelf.log.reportStat(
-                `eventsrec-${self.channelKey}-${
-                  pluginName || callerPluginName
-                }-${event}-error`,
+              self.log.reportStat(
+                `eventsrec-${self.channelKey}-${pluginName}-${event}-error`,
                 time
               );
-              await self.uSelf.log.error(err);
+              self.log.error(err.toString(), {});
             }
           },
           { noAck: false }
         );
 
-        await self.uSelf.log.debug(
-          `{callerPluginName} - listen rabbit: [{thisQueueKey}]`,
-          { callerPluginName, thisQueueKey: thisQueueKey }
-        );
+        self.log.debug(`listen rabbit: [{thisQueueKey}]`, {
+          thisQueueKey: thisQueueKey,
+        });
       }
     );
   }
 
   async emitEvent(
-    callerPluginName: string,
     pluginName: string,
     event: string,
     args: Array<any>
   ): Promise<void> {
-    const self = this;
-    const thisQueueKey = await LIB.getQueueKey(
-      self.uSelf,
+    const thisQueueKey = LIB.getQueueKey(
+      this.plugin,
       this.channelKey,
-      callerPluginName,
       pluginName,
       event
     );
-    this.uSelf.log.debug(`{callerPluginName} - Emit: [{thisQueueKey}]`, {
-      callerPluginName,
+    this.log.debug(`Emit: [{thisQueueKey}]`, {
       thisQueueKey,
     });
-    if (self.publishQueuesSetup.indexOf(thisQueueKey) < 0) {
+    if (this.publishQueuesSetup.indexOf(thisQueueKey) < 0) {
+      const self = this;
       self.publishQueuesSetup.push(thisQueueKey);
-      await self.publishChannel.channel.addSetup(
+      await this.publishChannel.channel.addSetup(
         async (iChannel: amqplibCore.ConfirmChannel) => {
           await iChannel.assertQueue(thisQueueKey, self.queueOpts);
-          await self.uSelf.log.debug(
-            `{callerPluginName} - emit rabbit: [{thisQueueKey}]`,
-            { callerPluginName, thisQueueKey }
-          );
+          self.log.debug(`emit rabbit: [{thisQueueKey}]`, { thisQueueKey });
         }
       );
     }
@@ -143,14 +136,11 @@ export class emit {
       !this.publishChannel.channel.sendToQueue(thisQueueKey, args, {
         expiration: this.queueOpts.messageTtl,
         contentType: "string",
-        appId: this.uSelf.myId,
+        appId: this.plugin.myId,
         timestamp: new Date().getTime(),
       })
     )
       throw `Cannot send msg to queue [${thisQueueKey}]`;
-    this.uSelf.log.debug(
-      callerPluginName,
-      ` - EMIT: [${thisQueueKey}] - EMITTED`
-    );
+    this.log.debug(` - EMIT: [${thisQueueKey}] - EMITTED`);
   }
 }

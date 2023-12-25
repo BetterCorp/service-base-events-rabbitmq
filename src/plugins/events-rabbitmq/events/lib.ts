@@ -1,37 +1,38 @@
 import { Tools } from "@bettercorp/tools/lib/Tools";
 import * as amqplib from "amqp-connection-manager";
 import * as amqplibCore from "amqplib";
-import { Events } from "../plugin";
+import { Plugin } from "../plugin";
+import { IPluginLogger } from "@bettercorp/service-base";
 
 export interface SetupChannel<T extends string | null = string | null> {
   exchangeName: T;
   channel: amqplib.ChannelWrapper;
 }
 export class LIB {
-  public static async getQueueKey(
-    uSelf: Events,
+  public static getQueueKey(
+    plugin: Plugin,
     channelKey: string,
-    callerPluginName: string,
-    pluginName: string | null,
+    pluginName: string,
     event: string,
     addKey?: string
   ) {
-    return `${await uSelf.getPlatformName(channelKey)}-${
-      pluginName || callerPluginName
-    }-${event}${Tools.isNullOrUndefined(addKey) ? "" : `-${addKey}`}`;
+    return `${plugin.getPlatformName(channelKey)}-${pluginName}-${event}${
+      Tools.isNullOrUndefined(addKey) ? "" : `-${addKey}`
+    }`;
   }
-  public static async getMyQueueKey(
-    uSelf: Events,
+  public static getMyQueueKey(
+    plugin: Plugin,
     channelKey: string,
     id: string,
     addKey?: string
   ) {
-    return `${await uSelf.getPlatformName(channelKey)}-${id}${
+    return `${plugin.getPlatformName(channelKey)}-${id}${
       Tools.isNullOrUndefined(addKey) ? "" : `-${addKey}`
     }`;
   }
   public static async setupChannel<T extends string | null>(
-    uSelf: Events,
+    plugin: Plugin,
+    log: IPluginLogger,
     connection: amqplib.AmqpConnectionManager,
     queueKey: string,
     exchangeName: T,
@@ -44,22 +45,22 @@ export class LIB {
       const exName =
         Tools.isNullOrUndefined(exchangeName) || Tools.isNullOrUndefined(exType)
           ? null
-          : await uSelf.getPlatformName(exchangeName);
+          : plugin.getPlatformName(exchangeName);
       let returned = false;
-      uSelf.log.debug(`Create channel ({queueKey})`, { queueKey });
+      log.debug(`Create channel ({queueKey})`, { queueKey });
       const channel = await connection.createChannel({
         json,
         setup: async (ichannel: amqplibCore.ConfirmChannel) => {
           if (exName !== null)
             await ichannel.assertExchange(exName, exType!, exOpts);
           if (!Tools.isNullOrUndefined(prefetch)) {
-            uSelf.log.debug(`prefetch ({queueKey}) {prefetch}`, {
+            log.debug(`prefetch ({queueKey}) {prefetch}`, {
               queueKey,
               prefetch: prefetch!,
             });
             await ichannel.prefetch(prefetch!);
           }
-          uSelf.log.debug(`setup exchange ({queueKey}) OK`, {
+          log.debug(`setup exchange ({queueKey}) OK`, {
             queueKey,
           });
           if (!returned) {
@@ -72,21 +73,22 @@ export class LIB {
         },
       });
       channel.on("close", () => {
-        uSelf.log.warn(`AMQP channel ({queueKey}) close`, { queueKey });
+        log.warn(`AMQP channel ({queueKey}) close`, { queueKey });
       });
       channel.on("error", (err: any) => {
-        uSelf.log.fatal(`AMQP channel ({queueKey}) error: {err}`, {
+        log.error(`AMQP channel ({queueKey}) error: {err}`, {
           queueKey,
           err: err.message || err,
         });
+        process.exit(6);
       });
       if (exName !== null)
-        uSelf.log.debug(`Assert exchange ({queueKey}) {exName} {exType}`, {
+        log.debug(`Assert exchange ({queueKey}) {exName} {exType}`, {
           queueKey,
           exName,
           exType: exType!,
         });
-      uSelf.log.debug(`Ready ({queueKey})`, { queueKey });
+      log.debug(`Ready ({queueKey})`, { queueKey });
     });
   }
 }

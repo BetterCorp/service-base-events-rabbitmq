@@ -1,17 +1,22 @@
-import { Events } from "../plugin";
+import { Plugin } from "../plugin";
 import * as amqplib from "amqp-connection-manager";
 import * as amqplibCore from "amqplib";
 import { EventEmitter } from "events";
 import { randomUUID } from "crypto";
 import { LIB, SetupChannel } from "./lib";
+import {
+  IPluginLogger,
+  SmartFunctionCallAsync,
+} from "@bettercorp/service-base";
 
 export class emitAndReturn extends EventEmitter {
-  private uSelf!: Events;
+  private plugin: Plugin;
+  private log: IPluginLogger;
   private privateQueuesSetup: Array<string> = [];
   private publishChannel!: SetupChannel;
   private receiveChannel!: SetupChannel;
-  private readonly channelKey = "81ar";
-  private readonly myChannelKey = "81kr";
+  private readonly channelKey = "91ar";
+  private readonly myChannelKey = "91kr";
   private readonly queueOpts: amqplib.Options.AssertQueue = {
     durable: false,
     autoDelete: true,
@@ -26,27 +31,33 @@ export class emitAndReturn extends EventEmitter {
     expires: 60 * 1000, // 60s
   };
 
-  async init(uSelf: Events) {
-    this.uSelf = uSelf;
+  constructor(plugin: Plugin, log: IPluginLogger) {
+    super();
+    this.plugin = plugin;
+    this.log = log;
+  }
+  async init() {
     const self = this;
-    const myEARQueueKey = await LIB.getMyQueueKey(
-      uSelf,
+    const myEARQueueKey = LIB.getMyQueueKey(
+      this.plugin,
       this.myChannelKey,
-      this.uSelf.myId
+      this.plugin.myId
     );
-    this.uSelf.log.debug(`Ready my events name: {myEARQueueKey}`, {
+    this.log.debug(`Ready my events name: {myEARQueueKey}`, {
       myEARQueueKey,
     });
 
     this.publishChannel = await LIB.setupChannel(
-      uSelf,
-      uSelf.publishConnection,
+      this.plugin,
+      this.log,
+      this.plugin.publishConnection,
       this.myChannelKey,
       null
     );
     this.receiveChannel = await LIB.setupChannel(
-      uSelf,
-      uSelf.receiveConnection,
+      this.plugin,
+      this.log,
+      this.plugin.receiveConnection,
       this.myChannelKey,
       null,
       undefined,
@@ -56,32 +67,32 @@ export class emitAndReturn extends EventEmitter {
     await this.receiveChannel.channel.addSetup(
       async (iChannel: amqplibCore.ConfirmChannel) => {
         await iChannel.assertQueue(myEARQueueKey, self.myQueueOpts);
-        self.uSelf.log.debug(`LISTEN: [{myEARQueueKey}]`, { myEARQueueKey });
+        self.log.debug(`LISTEN: [{myEARQueueKey}]`, { myEARQueueKey });
         await iChannel.consume(
           myEARQueueKey,
           (msg: amqplibCore.ConsumeMessage | null): any => {
             if (msg === null)
-              return self.uSelf.log.warn(
-                `[RECEVIED {myEARQueueKey}]... as null`,
-                { myEARQueueKey }
-              );
+              return self.log.warn(`[RECEVIED {myEARQueueKey}]... as null`, {
+                myEARQueueKey,
+              });
             try {
               let body = msg.content.toString();
-              self.uSelf.log.debug(`[RECEVIED {myEARQueueKey}]`, {
+              self.log.debug(`[RECEVIED {myEARQueueKey}]`, {
                 myEARQueueKey,
               });
               self.emit(msg.properties.correlationId, JSON.parse(body));
               iChannel.ack(msg);
             } catch (exc: any) {
-              self.uSelf.log.fatal("AMPQ Consumed exception: {eMsg}", {
+              self.log.error("AMPQ Consumed exception: {eMsg}", {
                 eMsg: exc.message || exc.toString(),
               });
+              process.exit(7);
             }
           },
           { noAck: false }
         );
-        self.uSelf.log.debug(`LISTEN: [{myEARQueueKey}]`, { myEARQueueKey });
-        self.uSelf.log.debug(`Ready my events name: {myEARQueueKey} OKAY`, {
+        self.log.debug(`LISTEN: [{myEARQueueKey}]`, { myEARQueueKey });
+        self.log.debug(`Ready my events name: {myEARQueueKey} OKAY`, {
           myEARQueueKey,
         });
       }
@@ -93,25 +104,22 @@ export class emitAndReturn extends EventEmitter {
   }
 
   async onReturnableEvent(
-    callerPluginName: string,
     pluginName: string,
     event: string,
     listener: { (args: Array<any>): Promise<any> }
   ): Promise<void> {
-    const self = this;
-    const queueKey = await LIB.getQueueKey(
-      self.uSelf,
+    const queueKey = LIB.getQueueKey(
+      this.plugin,
       this.channelKey,
-      callerPluginName,
       pluginName,
       event
     );
-    self.uSelf.log.debug(` EAR: {callerPluginName} listen {queueKey}`, {
-      callerPluginName,
+    this.log.debug(` EAR: listen {queueKey}`, {
       queueKey,
     });
 
-    await self.receiveChannel.channel.addSetup(
+    const self = this;
+    await this.receiveChannel.channel.addSetup(
       async (iChannel: amqplibCore.ConfirmChannel) => {
         await iChannel.assertQueue(queueKey, self.queueOpts);
         await iChannel.consume(
@@ -119,27 +127,31 @@ export class emitAndReturn extends EventEmitter {
           async (msg: amqplibCore.ConsumeMessage | null): Promise<any> => {
             let start = new Date().getTime();
             if (msg === null)
-              return self.uSelf.log.error(
+              return self.log.error(
                 "Message received on my EAR queue was null..."
               );
-            const returnQueue = await LIB.getMyQueueKey(
-              self.uSelf,
+            const returnQueue = LIB.getMyQueueKey(
+              self.plugin,
               this.myChannelKey,
               msg.properties.appId
             );
-            self.uSelf.log.debug(
-              `EAR: {callerPluginName} Received: {queueKey} from {returnQueue}`,
-              { callerPluginName, queueKey, returnQueue }
-            );
+            self.log.debug(`EAR: Received: {queueKey} from {returnQueue}`, {
+              queueKey,
+              returnQueue,
+            });
             let body = msg.content.toString();
             const bodyObj = JSON.parse(body) as Array<any>;
             try {
-              const response = await listener(bodyObj);
-              iChannel.ack(msg);
-              self.uSelf.log.debug(
-                `EAR: {callerPluginName} OKAY: {queueKey} -> {returnQueue}`,
-                { callerPluginName, queueKey, returnQueue }
+              const response = await SmartFunctionCallAsync(
+                self.plugin,
+                listener,
+                bodyObj
               );
+              iChannel.ack(msg);
+              self.log.debug(`EAR: OKAY: {queueKey} -> {returnQueue}`, {
+                queueKey,
+                returnQueue,
+              });
               if (
                 !self.publishChannel.channel.sendToQueue(
                   returnQueue,
@@ -148,7 +160,7 @@ export class emitAndReturn extends EventEmitter {
                     expiration: 5000,
                     correlationId: `${msg.properties.correlationId}-resolve`,
                     contentType: "string",
-                    appId: self.uSelf.myId,
+                    appId: self.plugin.myId,
                     timestamp: new Date().getTime(),
                   }
                 )
@@ -156,42 +168,37 @@ export class emitAndReturn extends EventEmitter {
                 throw `Cannot send msg to queue [${returnQueue}]`;
               let end = new Date().getTime();
               let time = end - start;
-              await self.uSelf.log.reportStat(
-                `eventsrec-${self.channelKey}-${
-                  pluginName || callerPluginName
-                }-${event}-ok`,
+              await self.log.reportStat(
+                `eventsrec-${self.channelKey}-${pluginName}-${event}-ok`,
                 time
               );
             } catch (exc) {
-              iChannel.ack(msg);
-              self.uSelf.log.error(
-                `EAR: {callerPluginName} ERROR: {queueKey} -> {returnQueue}`,
-                { callerPluginName, queueKey, returnQueue }
-              );
+              self.log.error(`EAR: ERROR: {queueKey} -> {returnQueue}`, {
+                queueKey,
+                returnQueue,
+              });
               if (
                 !self.publishChannel.channel.sendToQueue(returnQueue, exc, {
                   expiration: 5000,
                   correlationId: `${msg.properties.correlationId}-reject`,
                   contentType: "string",
-                  appId: self.uSelf.myId,
+                  appId: self.plugin.myId,
                   timestamp: new Date().getTime(),
                 })
               )
                 throw `Cannot send msg to queue [${returnQueue}]`;
+              iChannel.ack(msg);
               let end = new Date().getTime();
               let time = end - start;
-              await self.uSelf.log.reportStat(
-                `eventsrec-${self.channelKey}-${
-                  pluginName || callerPluginName
-                }-${event}-error`,
+              self.log.reportStat(
+                `eventsrec-${self.channelKey}-${pluginName}-${event}-error`,
                 time
               );
             }
           },
           { noAck: false }
         );
-        self.uSelf.log.debug(`EAR: {callerPluginName} listening {queueKey}`, {
-          callerPluginName,
+        self.log.debug(`EAR: listening {queueKey}`, {
           queueKey,
         });
       }
@@ -199,29 +206,27 @@ export class emitAndReturn extends EventEmitter {
   }
 
   async emitEventAndReturn(
-    callerPluginName: string,
     pluginName: string,
     event: string,
     timeoutSeconds: number,
     args: Array<any>
   ): Promise<any> {
-    const self = this;
     let start = new Date().getTime();
     const resultKey = `${randomUUID()}-${new Date().getTime()}${Math.random()}`;
-    const queueKey = await LIB.getQueueKey(
-      self.uSelf,
+    const queueKey = LIB.getQueueKey(
+      this.plugin,
       this.channelKey,
-      callerPluginName,
       pluginName,
       event
     );
-    this.uSelf.log.debug(
-      `EAR: {callerPluginName} emitting {queueKey} ({resultKey})`,
-      { callerPluginName, queueKey, resultKey }
-    );
-    if (self.privateQueuesSetup.indexOf(queueKey) < 0) {
-      self.privateQueuesSetup.push(queueKey);
-      await self.publishChannel.channel.addSetup(
+    this.log.debug(`EAR: emitting {queueKey} ({resultKey})`, {
+      queueKey,
+      resultKey,
+    });
+    const self = this;
+    if (this.privateQueuesSetup.indexOf(queueKey) < 0) {
+      this.privateQueuesSetup.push(queueKey);
+      await this.publishChannel.channel.addSetup(
         async (iChannel: amqplibCore.ConfirmChannel) => {
           await iChannel.assertQueue(queueKey, self.queueOpts);
         }
@@ -233,10 +238,8 @@ export class emitAndReturn extends EventEmitter {
         self.removeAllListeners(`${resultKey}-reject`);
         let end = new Date().getTime();
         let time = end - start;
-        await self.uSelf.log.reportStat(
-          `eventssen-${self.channelKey}-${
-            pluginName || callerPluginName
-          }-${event}-error`,
+        self.log.reportStat(
+          `eventssen-${self.channelKey}-${pluginName}-${event}-error`,
           time
         );
         reject("Timeout");
@@ -245,10 +248,8 @@ export class emitAndReturn extends EventEmitter {
         clearTimeout(timeoutHandler);
         let end = new Date().getTime();
         let time = end - start;
-        await self.uSelf.log.reportStat(
-          `eventssen-${self.channelKey}-${
-            pluginName || callerPluginName
-          }-${event}-ok`,
+        await self.log.reportStat(
+          `eventssen-${self.channelKey}-${pluginName}-${event}-ok`,
           time
         );
         resolve(rargs);
@@ -257,10 +258,8 @@ export class emitAndReturn extends EventEmitter {
         clearTimeout(timeoutHandler);
         let end = new Date().getTime();
         let time = end - start;
-        await self.uSelf.log.reportStat(
-          `eventssen-${self.channelKey}-${
-            pluginName || callerPluginName
-          }-${event}-error`,
+        await self.log.reportStat(
+          `eventssen-${self.channelKey}-${pluginName}-${event}-error`,
           time
         );
         reject(rargs);
@@ -270,15 +269,15 @@ export class emitAndReturn extends EventEmitter {
           expiration: timeoutSeconds * 1000 + 5000,
           correlationId: resultKey,
           contentType: "string",
-          appId: self.uSelf.myId,
+          appId: self.plugin.myId,
           timestamp: new Date().getTime(),
         })
       )
         throw `Cannot send msg to queue [${queueKey}]`;
-      self.uSelf.log.debug(
-        `EAR: {callerPluginName} emitted {queueKey} ({resultKey})`,
-        { callerPluginName, queueKey, resultKey }
-      );
+      self.log.debug(`EAR: emitted {queueKey} ({resultKey})`, {
+        queueKey,
+        resultKey,
+      });
     });
   }
 }

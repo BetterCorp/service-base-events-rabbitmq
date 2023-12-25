@@ -1,7 +1,7 @@
 import * as amqplib from "amqp-connection-manager";
 import * as amqplibCore from "amqplib";
 import { Tools } from "@bettercorp/tools/lib/Tools";
-import { PluginConfig } from "./sec.config";
+import { Config } from "./sec-config";
 import { broadcast } from "./events/broadcast";
 import { emit } from "./events/emit";
 import { emitAndReturn } from "./events/emitAndReturn";
@@ -9,21 +9,32 @@ import { emitStreamAndReceiveStream } from "./events/emitStreamAndReceiveStream"
 import { randomUUID } from "crypto";
 import { hostname } from "os";
 import { Readable } from "stream";
-import { EventsBase } from "@bettercorp/service-base";
+import { BSBEvents, BSBEventsConstructor } from "@bettercorp/service-base";
 
-export class Events extends EventsBase<PluginConfig> {
+export class Plugin extends BSBEvents<Config> {
   public publishConnection!: amqplib.AmqpConnectionManager;
   public receiveConnection!: amqplib.AmqpConnectionManager;
   public myId!: string;
-  private ear: emitAndReturn = new emitAndReturn();
-  private broadcast: broadcast = new broadcast();
-  private emit: emit = new emit();
-  private eas: emitStreamAndReceiveStream = new emitStreamAndReceiveStream();
+  private ear: emitAndReturn;
+  private broadcast: broadcast;
+  private emit: emit;
+  private eas: emitStreamAndReceiveStream;
 
-  async getPlatformName(name: string): Promise<string> {
-    const pluginConfig = await this.getPluginConfig();
-    if (pluginConfig.platformKey === null) return name;
-    return `${name}-${pluginConfig.platformKey}`;
+  constructor(config: BSBEventsConstructor) {
+    super(config);
+
+    this.broadcast = new broadcast(this, this.createNewLogger("broadcast"));
+    this.emit = new emit(this, this.createNewLogger("emit"));
+    this.ear = new emitAndReturn(this, this.createNewLogger("emitAndReturn"));
+    this.eas = new emitStreamAndReceiveStream(
+      this,
+      this.createNewLogger("stream")
+    );
+  }
+
+  getPlatformName(name: string): string {
+    if (this.config.platformKey === null) return name;
+    return `${name}-${this.config.platformKey}`;
   }
 
   async init(): Promise<void> {
@@ -31,44 +42,45 @@ export class Events extends EventsBase<PluginConfig> {
   }
 
   private async _connectToAMQP() {
-    const pluginConfig = await this.getPluginConfig();
-    await this.log.info(`Connect to {endpoints}`, {
-      endpoints: pluginConfig.endpoints,
+    this.log.info(`Connect to {endpoints}`, {
+      endpoints: this.config.endpoints,
     });
     let socketOptions: amqplib.AmqpConnectionManagerOptions = {
       connectionOptions: {},
     };
-    if (!Tools.isNullOrUndefined(pluginConfig.credentials)) {
+    if (!Tools.isNullOrUndefined(this.config.credentials)) {
       socketOptions.connectionOptions!.credentials =
         amqplibCore.credentials.plain(
-          pluginConfig.credentials.username,
-          pluginConfig.credentials.password
+          this.config.credentials.username,
+          this.config.credentials.password
         );
     }
     this.publishConnection = amqplib.connect(
-      pluginConfig.endpoints,
+      this.config.endpoints,
       socketOptions
     );
     this.receiveConnection = amqplib.connect(
-      pluginConfig.endpoints,
+      this.config.endpoints,
       socketOptions
     );
     const self = this;
     this.publishConnection.on("connect", async (data: any) => {
-      await self.log.info("AMQP CONNECTED: {url}", { url: data.url });
+      self.log.info("AMQP CONNECTED: {url}", { url: data.url });
     });
     this.publishConnection.on(
       "connectFailed",
       async (data: any): Promise<any> => {
         if (
-          pluginConfig.fatalOnDisconnect ||
-          pluginConfig.endpoints.length === 1
-        )
-          return await self.log.fatal("AMQP CONNECT FAIL: {url} ({msg})", {
+          self.config.fatalOnDisconnect ||
+          self.config.endpoints.length === 1
+        ) {
+          self.log.error("AMQP CONNECT FAIL: {url} ({msg})", {
             url: data.url,
             msg: data.err.toString(),
           });
-        await self.log.error("AMQP CONNECT FAIL: {url} ({msg})", {
+          process.exit(5);
+        }
+        self.log.error("AMQP CONNECT FAIL: {url} ({msg})", {
           url: data.url,
           msg: data.err.toString(),
         });
@@ -76,42 +88,43 @@ export class Events extends EventsBase<PluginConfig> {
     );
     this.publishConnection.on("error", async (err: any) => {
       if (err.message !== "Connection closing") {
-        await self.log.error("AMQP ERROR: {message}", { message: err.message });
+        self.log.error("AMQP ERROR: {message}", { message: err.message });
       }
-      if (pluginConfig.fatalOnDisconnect)
-        await self.log.fatal("AMQP ERROR: {message}", {
+      if (self.config.fatalOnDisconnect) {
+        self.log.error("AMQP ERROR: {message}", {
           message: err.message,
         });
+        process.exit(5);
+      }
     });
     this.receiveConnection.on("error", async (err: any) => {
       if (err.message !== "Connection closing") {
-        await self.log.error("AMQP ERROR: {message}", { message: err.message });
+        self.log.error("AMQP ERROR: {message}", { message: err.message });
       }
-      if (pluginConfig.fatalOnDisconnect)
-        await self.log.fatal("AMQP ERROR: {message}", {
+      if (self.config.fatalOnDisconnect) {
+        self.log.error("AMQP ERROR: {message}", {
           message: err.message,
         });
+        process.exit(5);
+      }
     });
     this.publishConnection.on("close", async (): Promise<any> => {
-      await self.log.warn("AMQP CONNECTION CLOSED");
+      self.log.warn("AMQP CONNECTION CLOSED");
     });
     this.receiveConnection.on("close", async (): Promise<any> => {
-      await self.log.warn("AMQP CONNECTION CLOSED");
+      self.log.warn("AMQP CONNECTION CLOSED");
     });
 
-    await this.log.info(`Connected to {endpoints}x2? (s:{sendS}/p:{pubS})`, {
-      endpoints: (await this.getPluginConfig()).endpoints,
+    this.log.info(`Connected to {endpoints}x2? (s:{sendS}/p:{pubS})`, {
+      endpoints: this.config.endpoints,
       sendS: this.receiveConnection.isConnected(),
       pubS: this.publishConnection.isConnected(),
     });
 
-    this.myId = `${
-      (await this.getPluginConfig()).uniqueId || hostname()
-    }-${randomUUID()}`;
-    await this.broadcast.init(this);
-    await this.emit.init(this);
-    await this.ear.init(this);
-    await this.eas.init(this);
+    this.myId = `${this.config.uniqueId ?? hostname()}-${randomUUID()}`;
+    await this.broadcast.init();
+    await this.emit.init();
+    await this.ear.init();
   }
 
   public dispose() {
@@ -123,91 +136,66 @@ export class Events extends EventsBase<PluginConfig> {
     this.receiveConnection.close();
   }
 
-  public override async onBroadcast(
-    callerPluginName: string,
+  async onBroadcast(
     pluginName: string,
     event: string,
-    listener: { (args: Array<any>): Promise<void> }
+    listener: (args: any[]) => Promise<void>
   ): Promise<void> {
-    await this.broadcast.onBroadcast(
-      callerPluginName,
-      pluginName,
-      event,
-      listener
-    );
+    await this.broadcast.onBroadcast(pluginName, event, listener);
   }
-  public async emitBroadcast(
-    callerPluginName: string,
+  async emitBroadcast(
     pluginName: string,
     event: string,
-    args: Array<any>
+    args: any[]
   ): Promise<void> {
-    await this.broadcast.emitBroadcast(
-      callerPluginName,
-      pluginName,
-      event,
-      args
-    );
+    await this.broadcast.emitBroadcast(pluginName, event, args);
   }
-
-  public override async onEvent(
-    callerPluginName: string,
+  async onEvent(
     pluginName: string,
     event: string,
-    listener: { (args: Array<any>): Promise<void> }
+    listener: (args: any[]) => Promise<void>
   ): Promise<void> {
-    await this.emit.onEvent(callerPluginName, pluginName, event, listener);
+    await this.emit.onEvent(pluginName, event, listener);
   }
-  public async emitEvent(
-    callerPluginName: string,
+  async emitEvent(
     pluginName: string,
     event: string,
-    args: Array<any>
+    args: any[]
   ): Promise<void> {
-    await this.emit.emitEvent(callerPluginName, pluginName, event, args);
+    await this.emit.emitEvent(pluginName, event, args);
   }
-
-  public async onReturnableEvent(
-    callerPluginName: string,
+  async onReturnableEvent(
     pluginName: string,
     event: string,
-    listener: { (args: Array<any>): Promise<any> }
+    listener: (args: any[]) => Promise<any>
   ): Promise<void> {
-    await this.ear.onReturnableEvent(
-      callerPluginName,
-      pluginName,
-      event,
-      listener
-    );
+    await this.ear.onReturnableEvent(pluginName, event, listener);
   }
-  public async emitEventAndReturn(
-    callerPluginName: string,
+  async emitEventAndReturn(
     pluginName: string,
     event: string,
     timeoutSeconds: number,
-    args: Array<any>
+    args: any[]
   ): Promise<any> {
     return await this.ear.emitEventAndReturn(
-      callerPluginName,
       pluginName,
       event,
       timeoutSeconds,
       args
     );
   }
-
   async receiveStream(
-    callerPluginName: string,
+    event: string,
     listener: (error: Error | null, stream: Readable) => Promise<void>,
-    timeoutSeconds: number
+    timeoutSeconds?: number | undefined
   ): Promise<string> {
-    return this.eas.receiveStream(callerPluginName, listener, timeoutSeconds);
+    return this.eas.receiveStream(listener, timeoutSeconds);
   }
   async sendStream(
-    callerPluginName: string,
+    event: string,
     streamId: string,
     stream: Readable
   ): Promise<void> {
-    return this.eas.sendStream(callerPluginName, streamId, stream);
+    return this.eas.sendStream(streamId, stream);
   }
 }
