@@ -1,0 +1,22 @@
+name: Build and Publish Plugin
+
+on:
+  create:
+    tags:
+      - "*"
+  push:
+    branches:
+      - "**"
+    tags-ignore:
+      - "**"
+
+jobs:
+  build-plugin-release:
+    uses: BetterCorp/service-base-build-workflows/.github/workflows/node.yml@master
+    with:
+      PUBLISH: true
+    secrets:
+      CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
+      NPM_PUBLISH_TOKEN: ${{ secrets.NPM2_TOKEN_PUB }}
+      NPM_EMAIL: ${{ secrets.NPM_EMAIL }}
+      NPM_NAME: ${{ secrets.NPM_NAME }}
