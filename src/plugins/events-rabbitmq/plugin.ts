@@ -1,7 +1,6 @@
 import * as amqplib from "amqp-connection-manager";
 import * as amqplibCore from "amqplib";
 import { Tools } from "@bettercorp/tools/lib/Tools";
-import { Config } from "./sec-config";
 import { broadcast } from "./events/broadcast";
 import { emit } from "./events/emit";
 import { emitAndReturn } from "./events/emitAndReturn";
@@ -9,7 +8,63 @@ import { emitStreamAndReceiveStream } from "./events/emitStreamAndReceiveStream"
 import { randomUUID } from "crypto";
 import { hostname } from "os";
 import { Readable } from "stream";
-import { BSBEvents, BSBEventsConstructor } from "@bettercorp/service-base";
+import {
+  BSBEvents,
+  BSBEventsConstructor,
+  BSBPluginConfig,
+} from "@bettercorp/service-base";
+import { z } from "zod";
+
+export const secSchema = z
+  .object({
+    platformKey: z
+      .string()
+      .nullable()
+      .default(null)
+      .describe(
+        "If you want to run multiple bsb platforms on a single rabbitmq"
+      ),
+    fatalOnDisconnect: z
+      .boolean()
+      .default(true)
+      .describe(
+        "Disconnect on error: Cause the bsb service to exit code 1 if the connection drops"
+      ),
+    prefetch: z
+      .number()
+      .default(10)
+      .describe("Prefetch: The RabbitMQ Prefetch amount"),
+    endpoints: z
+      .array(z.string())
+      .default(["amqp://localhost"])
+      .describe("Endpoints: The list of servers(cluster) to connect too"),
+    credentials: z
+      .object({
+        username: z.string().default("guest").describe("Username"),
+        password: z.string().default("guest").describe("Password"),
+      })
+      .default({}),
+    uniqueId: z
+      .string()
+      .nullable()
+      .default(null)
+      .describe(
+        "Unique Client ID: A static client Id - hostname is used when not set"
+      ),
+  })
+  .default({});
+
+export class Config extends BSBPluginConfig<typeof secSchema> {
+  validationSchema = secSchema;
+
+  migrate(
+    toVersion: string,
+    fromVersion: string | null,
+    fromConfig: any | null
+  ) {
+    return fromConfig;
+  }
+}
 
 export class Plugin extends BSBEvents<Config> {
   public publishConnection!: amqplib.AmqpConnectionManager;
@@ -22,7 +77,6 @@ export class Plugin extends BSBEvents<Config> {
 
   constructor(config: BSBEventsConstructor) {
     super(config);
-
     this.broadcast = new broadcast(this, this.createNewLogger("broadcast"));
     this.emit = new emit(this, this.createNewLogger("emit"));
     this.ear = new emitAndReturn(this, this.createNewLogger("emitAndReturn"));

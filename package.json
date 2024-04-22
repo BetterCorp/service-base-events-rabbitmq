@@ -6,7 +6,6 @@
   },
   "scripts": {
     "build": "rm -rfv ./lib && tsc",
-    "build-release": "rm -rfv ./lib && tsc --p ./tsconfig-release.json",
     "dev": "nodemon --config node_modules/@bettercorp/service-base/development/nodemon.json",
     "start": "ts-node node_modules/@bettercorp/service-base/lib/cli.js",
     "lint": "eslint src/ --ext .js,.jsx,.ts,.tsx",
@@ -36,7 +35,7 @@
     "typescript": "^5.3.3"
   },
   "dependencies": {
-    "@bettercorp/service-base": "^8.4.50",
+    "@bettercorp/service-base": "^8.5.47",
     "@bettercorp/tools": "^3.7.0",
     "amqp-connection-manager": "^4.1.14",
     "amqplib": "^0.10.3"
