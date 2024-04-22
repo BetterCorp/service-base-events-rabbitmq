@@ -35,9 +35,9 @@
     "typescript": "^5.3.3"
   },
   "dependencies": {
-    "@bettercorp/service-base": "^8.5.47",
+    "@bettercorp/service-base": "^8.5.63",
     "@bettercorp/tools": "^3.7.0",
     "amqp-connection-manager": "^4.1.14",
-    "amqplib": "^0.10.3"
+    "amqplib": "^0.10.4"
   }
 }
