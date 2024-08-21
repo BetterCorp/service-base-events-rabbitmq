@@ -1,7 +1,7 @@
 import { Tools } from "@bettercorp/tools/lib/Tools";
 import * as amqplib from "amqp-connection-manager";
 import * as amqplibCore from "amqplib";
-import { Plugin } from "../plugin";
+import { Plugin } from "../index";
 import { IPluginLogger } from "@bettercorp/service-base";
 
 export interface SetupChannel<T extends string | null = string | null> {

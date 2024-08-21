@@ -1,4 +1,4 @@
-import {Plugin} from "../plugin";
+import {Plugin} from "../index";
 import * as amqplib from "amqp-connection-manager";
 import * as amqplibCore from "amqplib";
 import {EventEmitter} from "events";
@@ -86,8 +86,7 @@ export class emitAndReturn
                   });
                   this.emit(msg.properties.correlationId, JSON.parse(body));
                   iChannel.ack(msg);
-                }
-                catch (exc: any) {
+                } catch (exc: any) {
                   this.log.error("AMQP Consumed exception: {eMsg}", {
                     eMsg: exc.message || exc.toString(),
                   });
@@ -112,7 +111,7 @@ export class emitAndReturn
   async onReturnableEvent(
       pluginName: string,
       event: string,
-      listener: { (args: Array<any>): Promise<any> },
+      listener: { (traceId: string | undefined, args: Array<any>): Promise<any> },
   ): Promise<void> {
     const queueKey = LIB.getQueueKey(
         this.plugin,
@@ -130,7 +129,7 @@ export class emitAndReturn
           await iChannel.consume(
               queueKey,
               async (msg: amqplibCore.ConsumeMessage | null): Promise<any> => {
-                const start = Date.now();
+                //const start = Date.now();
                 if (msg === null) {
                   return this.log.error(
                       "Message received on my EAR queue was null...",
@@ -151,6 +150,7 @@ export class emitAndReturn
                   const response = await SmartFunctionCallAsync(
                       this.plugin,
                       listener,
+                      bodyObj.splice(0, 1)[0],
                       bodyObj,
                   );
                   iChannel.ack(msg);
@@ -173,13 +173,12 @@ export class emitAndReturn
                   ) {
                     throw new BSBError(`Cannot send msg to queue [{returnQueue}]`, {returnQueue});
                   }
-                  const time = Date.now() - start;
-                  this.log.reportStat(
-                      `eventsrec-${this.channelKey}-${pluginName}-${event}-ok`,
-                      time,
-                  );
-                }
-                catch (exc) {
+                  // const time = Date.now() - start;
+                  // this.log.reportStat(
+                  //     `eventsrec-${this.channelKey}-${pluginName}-${event}-ok`,
+                  //     time,
+                  // );
+                } catch (exc) {
                   this.log.error(`EAR: ERROR: {queueKey} -> {returnQueue}`, {
                     queueKey,
                     returnQueue,
@@ -196,11 +195,11 @@ export class emitAndReturn
                     throw new BSBError(`Cannot send msg to queue [{returnQueue}]`, {returnQueue});
                   }
                   iChannel.ack(msg);
-                  const time = Date.now() - start;
-                  this.log.reportStat(
-                      `eventsrec-${this.channelKey}-${pluginName}-${event}-error`,
-                      time,
-                  );
+                  //const time = Date.now() - start;
+                  // this.log.reportStat(
+                  //     `eventsrec-${this.channelKey}-${pluginName}-${event}-error`,
+                  //     time,
+                  // );
                 }
               },
               {noAck: false},
@@ -215,6 +214,7 @@ export class emitAndReturn
   async emitEventAndReturn(
       pluginName: string,
       event: string,
+      traceId: string | undefined,
       timeoutSeconds: number,
       args: Array<any>,
   ): Promise<any> {
@@ -245,36 +245,36 @@ export class emitAndReturn
       const timeoutHandler = setTimeout(() => {
         this.removeAllListeners(`${resultKey}-resolve`);
         this.removeAllListeners(`${resultKey}-reject`);
-        const time = Date.now() - start;
-        this.log.reportStat(
-            `eventssen-${this.channelKey}-${pluginName}-${event}-error`,
-            time,
-        );
+        // const time = Date.now() - start;
+        // this.log.reportStat(
+        //     `eventssen-${this.channelKey}-${pluginName}-${event}-error`,
+        //     time,
+        // );
         reject("Timeout");
       }, timeoutSeconds * 1000);
 
       this.once(`${resultKey}-resolve`, async (rargs: string) => {
         clearTimeout(timeoutHandler);
-        const time = Date.now() - start;
-        this.log.reportStat(
-            `eventssen-${this.channelKey}-${pluginName}-${event}-ok`,
-            time,
-        );
+        // const time = Date.now() - start;
+        // this.log.reportStat(
+        //     `eventssen-${this.channelKey}-${pluginName}-${event}-ok`,
+        //     time,
+        // );
         resolve(rargs);
       });
 
       this.once(`${resultKey}-reject`, async (rargs: any) => {
         clearTimeout(timeoutHandler);
-        const time = Date.now() - start;
-        this.log.reportStat(
-            `eventssen-${this.channelKey}-${pluginName}-${event}-error`,
-            time,
-        );
+        // const time = Date.now() - start;
+        // this.log.reportStat(
+        //     `eventssen-${this.channelKey}-${pluginName}-${event}-error`,
+        //     time,
+        // );
         reject(rargs);
       });
 
       if (
-          !await this.publishChannel.channel.sendToQueue(queueKey, args, {
+          !await this.publishChannel.channel.sendToQueue(queueKey, [traceId, ...args], {
             expiration: timeoutSeconds * 1000 + 5000,
             correlationId: resultKey,
             contentType: "string",
