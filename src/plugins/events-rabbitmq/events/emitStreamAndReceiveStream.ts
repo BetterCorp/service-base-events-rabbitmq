@@ -1,6 +1,6 @@
 import {EventEmitter, Readable} from "stream";
 import {randomUUID} from "crypto";
-import {Plugin} from "../plugin";
+import {Plugin} from "../index";
 import * as amqplib from "amqp-connection-manager";
 import * as amqplibCore from "amqplib";
 import {LIB, SetupChannel} from "./lib";
@@ -109,8 +109,7 @@ export class emitStreamAndReceiveStream
                         () => iChannel.ack(msg),
                         () => iChannel.nack(msg),
                     );
-                  }
-                  catch (exc: any) {
+                  } catch (exc: any) {
                     this.log.error("AMPQ Consumed exception: {eMsg}", {
                       eMsg: exc.message || exc.toString(),
                     });
@@ -148,7 +147,7 @@ export class emitStreamAndReceiveStream
       listener: { (error: Error | null, stream: Readable): Promise<void> },
       timeoutSeconds = 5,
   ): Promise<string> {
-    const start = new Date().getTime();
+    //const start = new Date().getTime();
     const streamId = `${randomUUID()}-${new Date().getTime()}`;
     let thisTimeoutMS = this.staticCommsTimeout;
     this.log.debug(`SR: listening to {streamId}`, {
@@ -165,7 +164,7 @@ export class emitStreamAndReceiveStream
       let receiptTimeoutHandler: NodeJS.Timeout | null;
       // eslint-disable-next-line @typescript-eslint/no-unused-vars
       let createTimeout = async (e: string): Promise<void> => {
-        throw new BSBError("not setup yet : createTimeout", {});
+        throw new BSBError("not setup yet : createTimeout");
       };
       const cleanup = () => {
         self.cleanupSelf(streamId, "r-");
@@ -393,8 +392,7 @@ export class emitStreamAndReceiveStream
                 });
                 process.exit(7);
               });
-        }
-        catch (exc: any) {
+        } catch (exc: any) {
           cleanup();
           self.log.error("Stream NOT OK: {e}", {
             e: exc.message || exc,
@@ -439,18 +437,18 @@ export class emitStreamAndReceiveStream
             nack();
           },
       );
-      const end = new Date().getTime();
-      const time = end - start;
-      self.log.reportStat(
-          `streamrev-${self.streamChannelKey}-${dstEventsQueueKey}-ok`,
-          time,
-      );
+      // const end = new Date().getTime();
+      // const time = end - start;
+      // self.log.reportStat(
+      //     `streamrev-${self.streamChannelKey}-${dstEventsQueueKey}-ok`,
+      //     time,
+      // );
       resolve(`${this.plugin.myId}||${streamId}||${timeoutSeconds}`);
     });
   }
 
   async sendStream(streamIdf: string, stream: Readable): Promise<void> {
-    const start = new Date().getTime();
+    //const start = new Date().getTime();
     if (streamIdf.split("||").length !== 3) {
       throw new BSBError("invalid stream ID [{id}]", {id: streamIdf});
     }
@@ -497,29 +495,29 @@ export class emitStreamAndReceiveStream
       };
       const reject = async (e: Error) => {
         await cleanup("reject-" + e.message, e);
-        const end = new Date().getTime();
-        const time = end - start;
-        self.log.reportStat(
-            `streamsen-${self.streamChannelKey}-${streamReceiverId}-error`,
-            time,
-        );
+        // const end = new Date().getTime();
+        // const time = end - start;
+        // self.log.reportStat(
+        //     `streamsen-${self.streamChannelKey}-${streamReceiverId}-error`,
+        //     time,
+        // );
         rejectI(e);
       };
       const resolve = async () => {
         await cleanup("resolved");
-        const end = new Date().getTime();
-        const time = end - start;
-        self.log.reportStat(
-            `streamsen-${self.streamChannelKey}-${streamReceiverId}-ok`,
-            time,
-        );
+        // const end = new Date().getTime();
+        // const time = end - start;
+        // self.log.reportStat(
+        //     `streamsen-${self.streamChannelKey}-${streamReceiverId}-ok`,
+        //     time,
+        // );
         resolveI();
       };
       const updateLastResponseTimer = () => {
         lastResponseTimeoutCount = 1;
         if (lastResponseTimeoutHandler === null) {
           let createTimeout = (): void => {
-            throw new BSBError("not setup yet : createTimeout", {});
+            throw new BSBError("not setup yet : createTimeout");
           };
           const timeoutFunc = async () => {
             if (lastResponseTimeoutCount > 0) {

@@ -1,4 +1,4 @@
-import {Plugin} from "../plugin";
+import {Plugin} from "../index";
 import * as amqplib from "amqp-connection-manager";
 import * as amqplibCore from "amqplib";
 import {LIB, SetupChannel} from "./lib";
@@ -69,7 +69,7 @@ export class broadcast {
   async onBroadcast(
       pluginName: string,
       event: string,
-      listener: { (args: Array<any>): Promise<void> },
+      listener: { (traceId: string | undefined, args: Array<any>): Promise<void> },
   ): Promise<void> {
     const thisUUID = randomUUID();
     const rawQueueKey = LIB.getQueueKey(
@@ -95,25 +95,25 @@ export class broadcast {
           await this.receiveChannel.channel.consume(
               thisQueueKey,
               async (msg: amqplibCore.ConsumeMessage) => {
-                const start = Date.now();
+                //const start = Date.now();
                 const body = msg.content.toString();
                 const bodyObj = JSON.parse(body) as Array<any>;
                 try {
-                  await SmartFunctionCallAsync(this.plugin, listener, bodyObj);
+                  await SmartFunctionCallAsync(this.plugin, listener, bodyObj.splice(0,1)[0], bodyObj);
                   this.receiveChannel.channel.ack(msg);
-                  const time = Date.now() - start;
-                  this.log.reportStat(
-                      `eventsrec-${this.channelKey}-${pluginName}-${event}-ok`,
-                      time,
-                  );
+                  //const time = Date.now() - start;
+                  // this.log.reportStat(
+                  //     `eventsrec-${this.channelKey}-${pluginName}-${event}-ok`,
+                  //     time,
+                  // );
                 }
                 catch (err: any) {
                   this.receiveChannel.channel.nack(msg, true);
-                  const time = Date.now() - start;
-                  this.log.reportStat(
-                      `eventsrec-${this.channelKey}-${pluginName}-${event}-error`,
-                      time,
-                  );
+                  //const time = Date.now() - start;
+                  // this.log.reportStat(
+                  //     `eventsrec-${this.channelKey}-${pluginName}-${event}-error`,
+                  //     time,
+                  // );
                   this.log.error(err.toString(), {});
                 }
               },
@@ -134,6 +134,7 @@ export class broadcast {
   async emitBroadcast(
       pluginName: string,
       event: string,
+      traceId: string | undefined,
       args: Array<any>,
   ): Promise<void> {
     const thisQueueKey = LIB.getQueueKey(
@@ -160,7 +161,7 @@ export class broadcast {
         !await this.publishChannel.channel.publish(
             this.exchange.name,
             thisQueueKey,
-            args,
+            [traceId, ...args],
             {
               expiration: this.queueOpts.messageTtl,
               contentType: "string",
