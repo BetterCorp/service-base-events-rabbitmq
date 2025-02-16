@@ -2,7 +2,7 @@ import { Tools } from "@bettercorp/tools/lib/Tools";
 import * as amqplib from "amqp-connection-manager";
 import * as amqplibCore from "amqplib";
 import { Plugin } from "../index";
-import { IPluginLogger } from "@bettercorp/service-base";
+import { DTrace, IPluginLogging } from "@bettercorp/service-base";
 
 export interface SetupChannel<T extends string | null = string | null> {
   exchangeName: T;
@@ -16,9 +16,8 @@ export class LIB {
     event: string,
     addKey?: string
   ) {
-    return `${plugin.getPlatformName(channelKey)}-${pluginName}-${event}${
-      Tools.isNullOrUndefined(addKey) ? "" : `-${addKey}`
-    }`;
+    return `${ plugin.getPlatformName(channelKey) }-${ pluginName }-${ event }${ Tools.isNullOrUndefined(addKey) ? "" : `-${ addKey }`
+      }`;
   }
   public static getMyQueueKey(
     plugin: Plugin,
@@ -26,13 +25,13 @@ export class LIB {
     id: string,
     addKey?: string
   ) {
-    return `${plugin.getPlatformName(channelKey)}-${id}${
-      Tools.isNullOrUndefined(addKey) ? "" : `-${addKey}`
-    }`;
+    return `${ plugin.getPlatformName(channelKey) }-${ id }${ Tools.isNullOrUndefined(addKey) ? "" : `-${ addKey }`
+      }`;
   }
   public static async setupChannel<T extends string | null>(
+    trace: DTrace,
     plugin: Plugin,
-    log: IPluginLogger,
+    log: IPluginLogging,
     connection: amqplib.AmqpConnectionManager,
     queueKey: string,
     exchangeName: T,
@@ -48,20 +47,20 @@ export class LIB {
           ? null
           : plugin.getPlatformName(exchangeName);
       let returned = false;
-      log.debug(`Create channel ({queueKey})`, { queueKey });
+      log.debug(trace, `Create channel ({queueKey})`, { queueKey });
       const channel = await connection.createChannel({
         json,
         setup: async (ichannel: amqplibCore.ConfirmChannel) => {
           if (exName !== null)
             await ichannel.assertExchange(exName, exType!, exOpts);
           if (!Tools.isNullOrUndefined(prefetch)) {
-            log.debug(`prefetch ({queueKey}) {prefetch}`, {
+            log.debug(trace, `prefetch ({queueKey}) {prefetch}`, {
               queueKey,
               prefetch: prefetch!,
             });
             await ichannel.prefetch(prefetch!);
           }
-          log.debug(`setup exchange ({queueKey}) OK`, {
+          log.debug(trace, `setup exchange ({queueKey}) OK`, {
             queueKey,
           });
           if (!returned) {
@@ -74,22 +73,22 @@ export class LIB {
         },
       });
       channel.on("close", () => {
-        log.warn(`AMQP channel ({queueKey}) close`, { queueKey });
+        log.warn(trace, `AMQP channel ({queueKey}) close`, { queueKey });
       });
       channel.on("error", (err: any) => {
-        log.error(`AMQP channel ({queueKey}) error: {err}`, {
+        log.error(trace, `AMQP channel ({queueKey}) error: {err}`, {
           queueKey,
           err: err.message || err,
         });
         process.exit(6);
       });
       if (exName !== null)
-        log.debug(`Assert exchange ({queueKey}) {exName} {exType}`, {
+        log.debug(trace, `Assert exchange ({queueKey}) {exName} {exType}`, {
           queueKey,
           exName,
           exType: exType!,
         });
-      log.debug(`Ready ({queueKey})`, { queueKey });
+      log.debug(trace, `Ready ({queueKey})`, { queueKey });
     });
   }
 }

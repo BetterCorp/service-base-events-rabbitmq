@@ -1,0 +1,43 @@
+default:
+  metrics:
+    metrics-default:
+      package: "@bettercorp/service-base"
+      plugin: metrics-default
+      enabled: false
+  logging:
+    logging-default:
+      package: "@bettercorp/service-base"
+      plugin: logging-default
+      enabled: false
+  events:
+    events-default:
+      package: "@bettercorp/service-base"
+      plugin: events-default
+      enabled: false
+    rabbitmq:
+      plugin: events-rabbitmq
+      enabled: true
+      filter:
+        onBroadcast: true
+        emitBroadcast: true
+        onEvent: true
+        emitEvent: true
+        onReturnableEvent: true
+        emitEventAndReturn: true
+        emitEventAndReturnTimed: true
+        receiveStream: true
+        sendStream: true
+      config:
+        platformKey: null
+        fatalOnDisconnect: false
+        prefetch: 10
+        endpoints:
+          - amqp://127.0.0.1:5670
+        credentials:
+          username: guest
+          password: guest
+  services:
+    service-benchmarkify:
+      plugin: service-benchmarkify
+      enabled: true
+      config: {}

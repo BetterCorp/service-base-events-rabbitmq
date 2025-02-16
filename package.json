@@ -5,39 +5,40 @@
     "url": "https://github.com/BetterCorp/service-base-events-rabbitmq"
   },
   "scripts": {
-    "build": "rm -rfv ./lib && tsc",
-    "dev": "nodemon --config node_modules/@bettercorp/service-base/development/nodemon.json",
+    "build": "npm run build-release && npm run testDev",
+    "build-release": "rm -rfv ./lib && tsc",
+    "dev": "nodemon --config ./nodemon.json",
     "start": "ts-node node_modules/@bettercorp/service-base/lib/cli.js",
     "lint": "eslint src/ --ext .js,.jsx,.ts,.tsx",
-    "xtest": "env TS_NODE_COMPILER_OPTIONS='{\"module\": \"commonjs\" }' node ./node_modules/nyc/bin/nyc.js --reporter json --reporter lcov ./node_modules/mocha/bin/mocha.js -r ts-node/register 'src/tests/**/*.ts' --reporter json --reporter-options output=junit.json",
-    "xtestDev": "env TS_NODE_COMPILER_OPTIONS='{\"module\": \"commonjs\" }' node ./node_modules/nyc/bin/nyc.js ./node_modules/mocha/bin/mocha.js -r ts-node/register 'src/tests/**/*.ts'"
+    "test": "node ./node_modules/nyc/bin/nyc.js --reporter json --reporter lcov ./node_modules/mocha/bin/mocha.js -r ts-node/register 'src/tests/**/*.ts' --reporter json --reporter-options output=junit.json",
+    "testDev": "NODE_OPTIONS=\"--loader ts-node/esm\" ts-node ./node_modules/nyc/bin/nyc.js ./node_modules/mocha/bin/mocha.js -r ts-node/register 'src/tests/**/*.ts'"
   },
   "files": [
-    "lib/**/*"
+    "lib/plugins/events-rabbitmq/**/*"
   ],
   "main": "lib/index.js",
-  "version": "4.0.0",
+  "version": "5.0.1",
   "bsb_project": true,
   "devDependencies": {
-    "@types/amqplib": "^0.10.4",
+    "@types/amqplib": "^0.10.6",
     "@types/assert": "^1.5.10",
     "@types/chai": "^4.3.11",
-    "@types/mocha": "^10.0.6",
-    "@types/node": "^20.10.5",
+    "@types/mocha": "^10.0.10",
+    "@types/node": "^20.17.12",
     "@types/yargs": "^17.0.32",
     "@typescript-eslint/eslint-plugin": "^6.15.0",
-    "@typescript-eslint/parser": "^6.15.0",
+    "benchmarkify": "^4.0.0",
     "chai": "^4.3.10",
     "eslint": "^8.56.0",
     "mocha": "^10.2.0",
     "nyc": "^15.1.0",
     "ts-node": "^10.9.2",
-    "typescript": "^5.3.3"
+    "typescript": "^5.7.3"
   },
   "dependencies": {
-    "@bettercorp/service-base": "^8.5.72",
+    "@bettercorp/service-base": "^9.5.6-beta",
     "@bettercorp/tools": "^3.7.0",
     "amqp-connection-manager": "^4.1.14",
-    "amqplib": "^0.10.4"
+    "amqplib": "^0.10.5"
   }
 }

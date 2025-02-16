@@ -1,19 +1,22 @@
-import {Plugin} from "../index";
+import { Plugin } from "../index";
 import * as amqplib from "amqp-connection-manager";
 import * as amqplibCore from "amqplib";
-import {EventEmitter} from "events";
-import {randomUUID} from "crypto";
-import {LIB, SetupChannel} from "./lib";
+import { EventEmitter } from "events";
+import { v7 as randomUUID } from "uuid";
+import { LIB, SetupChannel } from "./lib";
 import {
   BSBError,
-  IPluginLogger,
+  IPluginLogging,
+  DTrace,
   SmartFunctionCallAsync,
+  IPluginMetrics,
 } from "@bettercorp/service-base";
 
 export class emitAndReturn
-    extends EventEmitter {
+  extends EventEmitter {
   private plugin: Plugin;
-  private log: IPluginLogger;
+  private log: IPluginLogging;
+  private metrics: IPluginMetrics;
   private privateQueuesSetup: Array<string> = [];
   private publishChannel!: SetupChannel;
   private receiveChannel!: SetupChannel;
@@ -33,73 +36,76 @@ export class emitAndReturn
     expires: 60 * 1000, // 60s
   };
 
-  constructor(plugin: Plugin, log: IPluginLogger) {
+  constructor(plugin: Plugin, log: IPluginLogging, metrics: IPluginMetrics) {
     super();
     this.plugin = plugin;
     this.log = log;
+    this.metrics = metrics;
   }
 
-  async init() {
+  async init(trace: DTrace) {
     const myEARQueueKey = LIB.getMyQueueKey(
-        this.plugin,
-        this.myChannelKey,
-        this.plugin.myId,
+      this.plugin,
+      this.myChannelKey,
+      this.plugin.myId,
     );
-    this.log.debug(`Ready my events name: {myEARQueueKey}`, {
+    this.log.debug(trace, `Ready my events name: {myEARQueueKey}`, {
       myEARQueueKey,
     });
 
     this.publishChannel = await LIB.setupChannel(
-        this.plugin,
-        this.log,
-        this.plugin.publishConnection,
-        this.myChannelKey,
-        null,
+      trace,
+      this.plugin,
+      this.log,
+      this.plugin.publishConnection,
+      this.myChannelKey,
+      null,
     );
     this.receiveChannel = await LIB.setupChannel(
-        this.plugin,
-        this.log,
-        this.plugin.receiveConnection,
-        this.myChannelKey,
-        null,
-        undefined,
-        undefined,
-        2,
+      trace,
+      this.plugin,
+      this.log,
+      this.plugin.receiveConnection,
+      this.myChannelKey,
+      null,
+      undefined,
+      undefined,
+      2,
     );
     await this.receiveChannel.channel.addSetup(
-        async (iChannel: amqplibCore.ConfirmChannel): Promise<void> => {
-          await iChannel.assertQueue(myEARQueueKey, this.myQueueOpts);
-          this.log.debug(`LISTEN: [{myEARQueueKey}]`, {myEARQueueKey});
-          await iChannel.consume(
-              myEARQueueKey,
-              (msg: amqplibCore.ConsumeMessage | null): any => {
-                if (msg === null) {
-                  this.log.warn(`[RECEIVED {myEARQueueKey}]... as null`, {
-                    myEARQueueKey,
-                  });
-                  return;
-                }
-                try {
-                  const body = msg.content.toString();
-                  this.log.debug(`[RECEIVED {myEARQueueKey}]`, {
-                    myEARQueueKey,
-                  });
-                  this.emit(msg.properties.correlationId, JSON.parse(body));
-                  iChannel.ack(msg);
-                } catch (exc: any) {
-                  this.log.error("AMQP Consumed exception: {eMsg}", {
-                    eMsg: exc.message || exc.toString(),
-                  });
-                  process.exit(7);
-                }
-              },
-              {noAck: false},
-          );
-          this.log.debug(`LISTEN: [{myEARQueueKey}]`, {myEARQueueKey});
-          this.log.debug(`Ready my events name: {myEARQueueKey} OKAY`, {
-            myEARQueueKey,
-          });
-        },
+      async (iChannel: amqplibCore.ConfirmChannel): Promise<void> => {
+        await iChannel.assertQueue(myEARQueueKey, this.myQueueOpts);
+        this.log.debug(trace, `LISTEN: [{myEARQueueKey}]`, { myEARQueueKey });
+        await iChannel.consume(
+          myEARQueueKey,
+          (msg: amqplibCore.ConsumeMessage | null): any => {
+            if (msg === null) {
+              this.log.warn(trace, `[RECEIVED {myEARQueueKey}]... as null`, {
+                myEARQueueKey,
+              });
+              return;
+            }
+            try {
+              const body = msg.content.toString();
+              this.log.debug(trace, `[RECEIVED {myEARQueueKey}]`, {
+                myEARQueueKey,
+              });
+              this.emit(msg.properties.correlationId, JSON.parse(body)[0]);
+              iChannel.ack(msg);
+            } catch (exc: any) {
+              this.log.error(trace, "AMQP Consumed exception: {eMsg}", {
+                eMsg: exc.message || exc.toString(),
+              });
+              process.exit(7);
+            }
+          },
+          { noAck: false },
+        );
+        this.log.debug(trace, `LISTEN: [{myEARQueueKey}]`, { myEARQueueKey });
+        this.log.debug(trace, `Ready my events name: {myEARQueueKey} OKAY`, {
+          myEARQueueKey,
+        });
+      },
     );
   }
 
@@ -109,182 +115,198 @@ export class emitAndReturn
   }
 
   async onReturnableEvent(
-      pluginName: string,
-      event: string,
-      listener: { (traceId: string | undefined, args: Array<any>): Promise<any> },
+    trace: DTrace,
+    pluginName: string,
+    event: string,
+    listener: { (trace: DTrace, args: Array<any>): Promise<any> },
   ): Promise<void> {
     const queueKey = LIB.getQueueKey(
-        this.plugin,
-        this.channelKey,
-        pluginName,
-        event,
+      this.plugin,
+      this.channelKey,
+      pluginName,
+      event,
     );
-    this.log.debug(` EAR: listen {queueKey}`, {
+    this.log.debug(trace, ` EAR: listen {queueKey}`, {
       queueKey,
     });
 
     await this.receiveChannel.channel.addSetup(
-        async (iChannel: amqplibCore.ConfirmChannel) => {
-          await iChannel.assertQueue(queueKey, this.queueOpts);
-          await iChannel.consume(
+      async (iChannel: amqplibCore.ConfirmChannel) => {
+        await iChannel.assertQueue(queueKey, this.queueOpts);
+        await iChannel.consume(
+          queueKey,
+          async (msg: amqplibCore.ConsumeMessage | null): Promise<any> => {
+            //const start = Date.now();
+            if (msg === null) {
+              return this.log.error(
+                trace,
+                "Message received on my EAR queue was null...",
+              );
+            }
+            const returnQueue = LIB.getMyQueueKey(
+              this.plugin,
+              this.myChannelKey,
+              msg.properties.appId,
+            );
+            this.log.debug(trace, `EAR: Received: {queueKey} from {returnQueue}`, {
               queueKey,
-              async (msg: amqplibCore.ConsumeMessage | null): Promise<any> => {
-                //const start = Date.now();
-                if (msg === null) {
-                  return this.log.error(
-                      "Message received on my EAR queue was null...",
-                  );
-                }
-                const returnQueue = LIB.getMyQueueKey(
-                    this.plugin,
-                    this.myChannelKey,
-                    msg.properties.appId,
-                );
-                this.log.debug(`EAR: Received: {queueKey} from {returnQueue}`, {
+              returnQueue,
+            });
+            const body = msg.content.toString();
+            const bodyObj = JSON.parse(body) as Array<any>;
+            const iTrace = bodyObj.splice(0, 1)[0] as DTrace;
+            const receiveSpan = this.metrics.createSpan(iTrace, "onReturnableEvent:receive", {
+              pluginName,
+              event,
+              functionTraceId: trace.t,
+              functionSpanId: trace.s
+            });
+            try {
+              const response = await SmartFunctionCallAsync(
+                this.plugin,
+                listener,
+                iTrace,
+                bodyObj,
+              );
+              iChannel.ack(msg);
+              this.log.debug(trace, `EAR: OKAY: {queueKey} -> {returnQueue}`, {
+                queueKey,
+                returnQueue,
+              });
+              const sendSpan = this.metrics.createSpan(iTrace, "onReturnableEvent:send", {
+                pluginName,
+                event,
+                status: "ok"
+              });
+              if (
+                !await this.publishChannel.channel.sendToQueue(
+                  returnQueue,
+                  [response],
+                  {
+                    expiration: 5000,
+                    correlationId: `${ msg.properties.correlationId }-resolve`,
+                    contentType: "string",
+                    appId: this.plugin.myId,
+                    timestamp: Date.now(),
+                  },
+                )
+              ) {
+                sendSpan.error(new Error(`Cannot send msg to queue [{returnQueue}]`));
+                sendSpan.end();
+                throw new BSBError(trace, `Cannot send msg to queue [{returnQueue}]`, { returnQueue });
+              }
+            } catch (exc) {
+                this.log.error(trace, `EAR: ERROR: {queueKey} -> {returnQueue}`, {
                   queueKey,
                   returnQueue,
                 });
-                const body = msg.content.toString();
-                const bodyObj = JSON.parse(body) as Array<any>;
-                try {
-                  const response = await SmartFunctionCallAsync(
-                      this.plugin,
-                      listener,
-                      bodyObj.splice(0, 1)[0],
-                      bodyObj,
-                  );
-                  iChannel.ack(msg);
-                  this.log.debug(`EAR: OKAY: {queueKey} -> {returnQueue}`, {
-                    queueKey,
-                    returnQueue,
-                  });
-                  if (
-                      !await this.publishChannel.channel.sendToQueue(
-                          returnQueue,
-                          response,
-                          {
-                            expiration: 5000,
-                            correlationId: `${msg.properties.correlationId}-resolve`,
-                            contentType: "string",
-                            appId: this.plugin.myId,
-                            timestamp: Date.now(),
-                          },
-                      )
-                  ) {
-                    throw new BSBError(`Cannot send msg to queue [{returnQueue}]`, {returnQueue});
-                  }
-                  // const time = Date.now() - start;
-                  // this.log.reportStat(
-                  //     `eventsrec-${this.channelKey}-${pluginName}-${event}-ok`,
-                  //     time,
-                  // );
-                } catch (exc) {
-                  this.log.error(`EAR: ERROR: {queueKey} -> {returnQueue}`, {
-                    queueKey,
-                    returnQueue,
-                  });
-                  if (
-                      !await this.publishChannel.channel.sendToQueue(returnQueue, exc, {
-                        expiration: 5000,
-                        correlationId: `${msg.properties.correlationId}-reject`,
-                        contentType: "string",
-                        appId: this.plugin.myId,
-                        timestamp: Date.now(),
-                      })
-                  ) {
-                    throw new BSBError(`Cannot send msg to queue [{returnQueue}]`, {returnQueue});
-                  }
-                  iChannel.ack(msg);
-                  //const time = Date.now() - start;
-                  // this.log.reportStat(
-                  //     `eventsrec-${this.channelKey}-${pluginName}-${event}-error`,
-                  //     time,
-                  // );
-                }
-              },
-              {noAck: false},
-          );
-          this.log.debug(`EAR: listening {queueKey}`, {
-            queueKey,
-          });
-        },
+              const sendSpan = this.metrics.createSpan(iTrace, "onReturnableEvent:send", {
+                pluginName,
+                event,
+                status: "error"
+              });
+              if (
+                !await this.publishChannel.channel.sendToQueue(returnQueue, [exc], {
+                  expiration: 5000,
+                  correlationId: `${ msg.properties.correlationId }-reject`,
+                  contentType: "string",
+                  appId: this.plugin.myId,
+                  timestamp: Date.now(),
+                })
+              ) {
+                sendSpan.error(new Error(`Cannot send msg to queue [{returnQueue}]`));
+                sendSpan.end();
+                receiveSpan.error(new Error(`Cannot send msg to queue [{returnQueue}]`));
+                receiveSpan.end();
+                throw new BSBError(trace, `Cannot send msg to queue [{returnQueue}]`, { returnQueue });
+              }
+              iChannel.ack(msg);
+              sendSpan.end();
+              receiveSpan.end();
+            }
+          },
+          { noAck: false },
+        );
+        this.log.debug(trace, `EAR: listening {queueKey}`, {
+          queueKey,
+        });
+      },
     );
   }
 
   async emitEventAndReturn(
-      pluginName: string,
-      event: string,
-      traceId: string | undefined,
-      timeoutSeconds: number,
-      args: Array<any>,
+    trace: DTrace,
+    pluginName: string,
+    event: string,
+    timeoutSeconds: number,
+    args: Array<any>,
   ): Promise<any> {
     const start = Date.now();
-    const resultKey = `${randomUUID()}-${start}${Math.random()}`;
+    const resultKey = `${ randomUUID() }-${ start }${ Math.random() }`;
     const queueKey = LIB.getQueueKey(
-        this.plugin,
-        this.channelKey,
-        pluginName,
-        event,
+      this.plugin,
+      this.channelKey,
+      pluginName,
+      event,
     );
-    this.log.debug(`EAR: emitting {queueKey} ({resultKey})`, {
+    this.log.debug(trace, `EAR: emitting {queueKey} ({resultKey})`, {
       queueKey,
       resultKey,
+    });
+
+    const sendSpan = this.metrics.createSpan(trace, "emitEventAndReturn:send", {
+      pluginName,
+      event,
+      timeoutSeconds
     });
 
     if (!this.privateQueuesSetup.includes(queueKey)) {
       this.privateQueuesSetup.push(queueKey);
       await this.publishChannel.channel.addSetup(
-          async (iChannel: amqplibCore.ConfirmChannel) => {
-            await iChannel.assertQueue(queueKey, this.queueOpts);
-          },
+        async (iChannel: amqplibCore.ConfirmChannel) => {
+          await iChannel.assertQueue(queueKey, this.queueOpts);
+        },
       );
     }
 
     // eslint-disable-next-line no-async-promise-executor
-    return new Promise(async (resolve, reject) => {
+    return new Promise(async (resolve: Function, reject: Function) => {
       const timeoutHandler = setTimeout(() => {
-        this.removeAllListeners(`${resultKey}-resolve`);
-        this.removeAllListeners(`${resultKey}-reject`);
-        // const time = Date.now() - start;
-        // this.log.reportStat(
-        //     `eventssen-${this.channelKey}-${pluginName}-${event}-error`,
-        //     time,
-        // );
-        reject("Timeout");
+        this.removeAllListeners(`${ resultKey }-resolve`);
+        this.removeAllListeners(`${ resultKey }-reject`);
+        const timeoutError = new BSBError(sendSpan.trace, "Timeout");
+        sendSpan.error(timeoutError);
+        sendSpan.end();
+        reject(timeoutError);
       }, timeoutSeconds * 1000);
 
-      this.once(`${resultKey}-resolve`, async (rargs: string) => {
+      this.once(`${ resultKey }-resolve`, async (rargs: any) => {
         clearTimeout(timeoutHandler);
-        // const time = Date.now() - start;
-        // this.log.reportStat(
-        //     `eventssen-${this.channelKey}-${pluginName}-${event}-ok`,
-        //     time,
-        // );
+        sendSpan.end();
         resolve(rargs);
       });
 
-      this.once(`${resultKey}-reject`, async (rargs: any) => {
+      this.once(`${ resultKey }-reject`, async (rargs: any) => {
         clearTimeout(timeoutHandler);
-        // const time = Date.now() - start;
-        // this.log.reportStat(
-        //     `eventssen-${this.channelKey}-${pluginName}-${event}-error`,
-        //     time,
-        // );
+        sendSpan.error(rargs);
+        sendSpan.end();
         reject(rargs);
       });
 
       if (
-          !await this.publishChannel.channel.sendToQueue(queueKey, [traceId, ...args], {
-            expiration: timeoutSeconds * 1000 + 5000,
-            correlationId: resultKey,
-            contentType: "string",
-            appId: this.plugin.myId,
-            timestamp: Date.now(),
-          })
+        !await this.publishChannel.channel.sendToQueue(queueKey, [trace, ...args], {
+          expiration: timeoutSeconds * 1000 + 5000,
+          correlationId: resultKey,
+          contentType: "string",
+          appId: this.plugin.myId,
+          timestamp: Date.now(),
+        })
       ) {
-        throw new BSBError(`Cannot send msg to queue [{queueKey}]`, {queueKey});
+        sendSpan.error(new Error(`Cannot send msg to queue [${ queueKey }]`));
+        sendSpan.end();
+        throw new BSBError(trace, `Cannot send msg to queue [{queueKey}]`, { queueKey });
       }
-      this.log.debug(`EAR: emitted {queueKey} ({resultKey})`, {
+      this.log.debug(trace, `EAR: emitted {queueKey} ({resultKey})`, {
         queueKey,
         resultKey,
       });
